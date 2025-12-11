@@ -216,4 +216,33 @@ router.get('/categories', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/feeds/for-you
+ * Proxy para feed "For You" personalizado
+ * Query params: user_id, limit
+ */
+router.get('/feeds/for-you', async (req: Request, res: Response) => {
+  try {
+    const { user_id, limit = 50 } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' });
+    }
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/api/feeds/for-you?user_id=${user_id}&limit=${limit}`
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar feed For You' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
 export default router;
