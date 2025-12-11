@@ -157,8 +157,8 @@ function trackInteraction(articleId, type, extra = {}) {
 // Track impressions when items come into view
 function trackImpression(item) {
   if (!currentUserId.value) return
-  const articleId = parseInt(item.id.replace('news_', ''))
-  trackInteraction(articleId, 'impression', { position: displayItems.value.indexOf(item) })
+  // Mantém formato "news_123" para o gateway
+  trackInteraction(item.id, 'impression', { position: displayItems.value.indexOf(item) })
 }
 
 // Track click
@@ -168,21 +168,21 @@ function handleItemClick(item) {
     return
   }
 
-  const articleId = parseInt(item.id.replace('news_', ''))
-  trackInteraction(articleId, 'click', { position: displayItems.value.indexOf(item) })
+  // Mantém formato "news_123" para o gateway
+  trackInteraction(item.id, 'click', { position: displayItems.value.indexOf(item) })
   
   // Track view start
-  viewStartTimes.value.set(articleId, Date.now())
+  viewStartTimes.value.set(item.id, Date.now())
   
   window.open(item.url, '_blank')
   
   // Simulate view end after 5 seconds
   setTimeout(() => {
-    const startTime = viewStartTimes.value.get(articleId)
+    const startTime = viewStartTimes.value.get(item.id)
     if (startTime) {
       const duration = Date.now() - startTime
-      trackInteraction(articleId, 'view', { duration })
-      viewStartTimes.value.delete(articleId)
+      trackInteraction(item.id, 'view', { duration })
+      viewStartTimes.value.delete(item.id)
     }
   }, 5000)
 }
