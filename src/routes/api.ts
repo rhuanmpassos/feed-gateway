@@ -315,6 +315,27 @@ router.get('/users/:id/preferences', async (req: Request, res: Response) => {
 });
 
 /**
+ * PUT /api/users/:id/preferences
+ * Atualiza preferências de categoria do usuário (onboarding)
+ * Body: { categories: number[] }
+ */
+router.put('/users/:id/preferences', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/users/${id}/preferences`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao atualizar preferências:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
  * GET /api/interactions/user/:userId/stats
  * Estatísticas de interações do usuário
  */
