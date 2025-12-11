@@ -61,6 +61,10 @@ export class NewsClient extends EventEmitter {
       console.log(`📰 News: Evento 'connected' recebido`);
     });
 
+    this.es.addEventListener('initial_articles', (event: MessageEvent) => {
+      this.handleInitialArticles(event);
+    });
+
     this.es.addEventListener('new_article', (event: MessageEvent) => {
       this.handleEvent('new_article', event);
     });
@@ -68,6 +72,28 @@ export class NewsClient extends EventEmitter {
     this.es.addEventListener('heartbeat', () => {
       // Keep-alive, ignora
     });
+  }
+
+  /**
+   * Processa artigos iniciais recebidos na conexão
+   */
+  private handleInitialArticles(event: MessageEvent): void {
+    try {
+      const data = JSON.parse(event.data);
+      const articles = data.articles || [];
+      
+      console.log(`📰 News: Recebidos ${articles.length} artigos iniciais`);
+      
+      // Emite cada artigo como new_item (em ordem reversa para manter cronologia)
+      for (const article of articles.reverse()) {
+        const feedItem = this.normalizeToFeedItem(article);
+        this.emit('new_item', feedItem);
+      }
+      
+      console.log(`📰 News: ${articles.length} artigos carregados no feed`);
+    } catch (error) {
+      console.error(`❌ News: Erro ao processar artigos iniciais:`, error);
+    }
   }
 
   /**
@@ -91,8 +117,19 @@ export class NewsClient extends EventEmitter {
 
   /**
    * Normaliza evento do News para FeedItem
+   * Suporta tanto new_article (com category objeto) quanto initial_articles (campos flat)
    */
-  private normalizeToFeedItem(data: NewsEvent): FeedItem {
+  private normalizeToFeedItem(data: any): FeedItem {
+    // Normaliza categoria - pode vir como objeto ou campos separados
+    let category = data.category;
+    if (!category && data.category_id) {
+      category = {
+        id: data.category_id,
+        name: data.category_name,
+        slug: data.category_slug
+      };
+    }
+
     return {
       id: `news_${data.id}`,
       source: 'news',
@@ -105,8 +142,8 @@ export class NewsClient extends EventEmitter {
       
       siteId: data.site_id,
       siteName: data.site_name,
-      category_id: data.category_id,    // ID da categoria
-      category: data.category,           // Objeto { id, name, slug }
+      category_id: data.category_id || category?.id,
+      category: category,
       
       publishedAt: data.published_at || data.created_at,
       receivedAt: new Date().toISOString(),
