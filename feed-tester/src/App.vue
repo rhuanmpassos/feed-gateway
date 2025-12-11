@@ -5,6 +5,7 @@ import StatusBar from './components/StatusBar.vue'
 import FilterBar from './components/FilterBar.vue'
 import FeedCard from './components/FeedCard.vue'
 import ConnectionLog from './components/ConnectionLog.vue'
+import AuthScreen from './components/AuthScreen.vue'
 
 // Gateway URL - Render
 const GATEWAY_URL = 'https://feed-gateway.onrender.com'
@@ -26,10 +27,12 @@ const ws = ref(null)
 const currentUserId = ref(localStorage.getItem('test_user_id') || null)
 const userName = ref('')
 const userEmail = ref('')
-const showUserModal = ref(false)
 const showOnboardingModal = ref(false)
+const authError = ref('')
 const selectedOnboardingCategories = ref([])
 const pendingUserId = ref(null)
+const onboardingLoading = ref(false)
+const onboardingError = ref('')
 const userPreferences = ref([])
 const userStats = ref(null)
 
@@ -99,12 +102,12 @@ async function createUser() {
       const isNew = data.data?.is_new || false
       const preferences = data.data?.preferences || []
       
-      showUserModal.value = false
-      
       // Se usuário é novo (sem preferências), mostra onboarding
       if (isNew || preferences.length === 0) {
         pendingUserId.value = userId
         selectedOnboardingCategories.value = []
+        onboardingError.value = ''
+        onboardingLoading.value = false
         showOnboardingModal.value = true
         addLog('info', `Usuário ${userId} criado - iniciando onboarding`)
       } else {
@@ -125,32 +128,66 @@ async function createUser() {
 // Salva preferências do onboarding
 async function saveOnboardingPreferences() {
   if (selectedOnboardingCategories.value.length < 1) {
+    onboardingError.value = 'Selecione pelo menos 1 categoria'
     addLog('error', 'Selecione pelo menos 1 categoria')
     return
   }
 
+  if (!pendingUserId.value) {
+    onboardingError.value = 'Erro: ID do usuário não encontrado. Tente criar a conta novamente.'
+    addLog('error', 'pendingUserId é null')
+    return
+  }
+
+  onboardingLoading.value = true
+  onboardingError.value = ''
+  
+  const categoriesToSave = [...selectedOnboardingCategories.value]
+  const userId = pendingUserId.value
+
   try {
-    const res = await fetch(`${GATEWAY_URL}/api/users/${pendingUserId.value}/preferences`, {
+    console.log('Salvando preferências para usuário:', userId)
+    console.log('Categorias selecionadas:', categoriesToSave)
+    
+    const res = await fetch(`${GATEWAY_URL}/api/users/${userId}/preferences`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categories: selectedOnboardingCategories.value })
+      body: JSON.stringify({ categories: categoriesToSave })
     })
+    
+    console.log('Response status:', res.status)
+    
+    if (!res.ok) {
+      const errorText = await res.text()
+      console.error('Error response:', errorText)
+      onboardingError.value = `Erro ${res.status}: ${errorText || 'Falha na requisição'}`
+      addLog('error', `Erro ${res.status}`, errorText)
+      return
+    }
+    
     const data = await res.json()
+    console.log('Response data:', data)
     
     if (data.success) {
-      currentUserId.value = pendingUserId.value
-      localStorage.setItem('test_user_id', pendingUserId.value)
+      currentUserId.value = userId
+      localStorage.setItem('test_user_id', userId)
       showOnboardingModal.value = false
       pendingUserId.value = null
-      addLog('success', `✅ ${selectedOnboardingCategories.value.length} categorias salvas! Feed For You personalizado.`)
+      selectedOnboardingCategories.value = []
+      addLog('success', `✅ ${categoriesToSave.length} categorias salvas! Feed For You personalizado.`)
       await loadUserData()
       // Muda para For You automaticamente
       feedMode.value = 'for-you'
     } else {
+      onboardingError.value = data.error || 'Erro ao salvar preferências'
       addLog('error', 'Erro ao salvar preferências', data)
     }
   } catch (e) {
+    console.error('Erro ao salvar preferências:', e)
+    onboardingError.value = `Erro de conexão: ${e.message}`
     addLog('error', 'Erro ao salvar preferências', e.message)
+  } finally {
+    onboardingLoading.value = false
   }
 }
 
@@ -206,6 +243,62 @@ function clearUser() {
   forYouItems.value = []
   feedMode.value = 'chronological'
   addLog('info', 'Usuário deslogado')
+}
+
+// Login from AuthScreen (only email) - usa o mesmo endpoint POST
+async function handleLogin({ email }) {
+  authError.value = ''
+  try {
+    addLog('info', 'Buscando usuário...')
+    const res = await fetch(`${GATEWAY_URL}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '', email: email })
+    })
+    const data = await res.json()
+    
+    if (data.success || data.id) {
+      const userId = data.data?.id || data.id
+      const isNew = data.data?.is_new || false
+      const preferences = data.data?.preferences || []
+      
+      if (isNew) {
+        // Usuário não existe, precisa criar conta
+        authError.value = 'Usuário não encontrado. Crie uma conta primeiro.'
+        addLog('error', 'Usuário não encontrado. Crie uma conta primeiro.')
+        return
+      }
+      
+      // Usuário existente
+      if (preferences.length === 0) {
+        // Usuário existe mas sem preferências - mostrar onboarding
+        pendingUserId.value = userId
+        selectedOnboardingCategories.value = []
+        showOnboardingModal.value = true
+        addLog('info', `Bem-vindo de volta! Configure suas preferências.`)
+      } else {
+        // Usuário existente com preferências
+        currentUserId.value = userId
+        localStorage.setItem('test_user_id', userId)
+        addLog('success', `Bem-vindo de volta! ID ${userId}`)
+        await loadUserData()
+      }
+    } else {
+      authError.value = 'Erro ao fazer login. Tente novamente.'
+      addLog('error', 'Erro ao fazer login', data)
+    }
+  } catch (e) {
+    authError.value = 'Erro de conexão. Tente novamente.'
+    addLog('error', 'Erro ao fazer login', e.message)
+  }
+}
+
+// Register from AuthScreen (name + email)
+async function handleRegister({ name, email }) {
+  authError.value = ''
+  userName.value = name
+  userEmail.value = email
+  await createUser()
 }
 
 // ========== INTERACTION TRACKING ==========
@@ -506,7 +599,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen">
+  <!-- Auth Screen - shown when not logged in -->
+  <AuthScreen 
+    v-if="!currentUserId" 
+    :error="authError"
+    @login="handleLogin" 
+    @register="handleRegister" 
+  />
+  
+  <!-- Main App - shown when logged in -->
+  <div v-else class="min-h-screen">
     <!-- Background effects -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none">
       <div class="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl"></div>
@@ -523,20 +625,15 @@ onUnmounted(() => {
         <div class="glass-card rounded-xl p-3 flex items-center justify-between">
           <div class="flex items-center gap-4">
             <span class="text-white/50 text-sm">Usuário:</span>
-            <div v-if="currentUserId" class="flex items-center gap-2">
+            <div class="flex items-center gap-2">
               <span class="px-3 py-1 rounded-lg bg-green-500/20 text-green-300 text-sm font-medium">
                 ID: {{ currentUserId }}
               </span>
-              <button @click="loadUserData" class="text-xs text-white/50 hover:text-white">🔄</button>
-              <button @click="clearUser" class="text-xs text-red-400 hover:text-red-300">✕ Sair</button>
+              <button @click="loadUserData" class="text-xs text-white/50 hover:text-white" title="Atualizar dados">🔄</button>
+              <button @click="clearUser" class="px-2 py-1 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs flex items-center gap-1">
+                <span>Sair</span>
+              </button>
             </div>
-            <button 
-              v-else
-              @click="showUserModal = true"
-              class="px-3 py-1 rounded-lg bg-purple-500/30 text-purple-300 text-sm font-medium hover:bg-purple-500/40"
-            >
-              + Criar/Selecionar Usuário
-            </button>
           </div>
           
           <!-- Feed Mode Toggle -->
@@ -676,136 +773,95 @@ onUnmounted(() => {
       </main>
     </div>
     
-    <!-- User Modal -->
-    <Teleport to="body">
-      <div v-if="showUserModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showUserModal = false"></div>
-        <div class="relative glass-card rounded-2xl p-6 w-full max-w-md">
-          <h2 class="text-xl font-bold text-white mb-4">👤 Criar/Selecionar Usuário</h2>
-          
-          <div class="space-y-4">
-            <div>
-              <label class="block text-sm text-white/70 mb-1">Nome</label>
-              <input 
-                v-model="userName"
-                type="text"
-                class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 focus:outline-none focus:border-purple-500"
-                placeholder="Seu nome"
-              />
-            </div>
-            
-            <div>
-              <label class="block text-sm text-white/70 mb-1">Email</label>
-              <input 
-                v-model="userEmail"
-                type="email"
-                class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/30 focus:outline-none focus:border-purple-500"
-                placeholder="seu@email.com"
-              />
-            </div>
-            
-            <div class="flex gap-3">
-              <button 
-                @click="showUserModal = false"
-                class="flex-1 px-4 py-2 rounded-lg bg-white/10 text-white/70 hover:bg-white/20"
-              >
-                Cancelar
-              </button>
-              <button 
-                @click="createUser"
-                class="flex-1 px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600"
-              >
-                Criar/Entrar
-              </button>
-            </div>
-            
-            <div class="text-xs text-white/40 text-center">
-              Se o email já existir, o usuário será selecionado
-            </div>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- Onboarding Modal - Seleção de Categorias -->
-    <Teleport to="body">
-      <div v-if="showOnboardingModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
-        <div class="relative glass-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-          <div class="text-center mb-6">
-            <div class="text-5xl mb-3">🎯</div>
-            <h2 class="text-2xl font-bold text-white mb-2">Personalize seu Feed</h2>
-            <p class="text-white/60">Selecione até 6 categorias que mais te interessam</p>
-            <p class="text-white/40 text-sm mt-1">Isso ajuda a criar seu feed "For You" personalizado</p>
-          </div>
-          
-          <!-- Categorias Grid -->
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-            <button
-              v-for="cat in categories"
-              :key="cat.id"
-              @click="toggleOnboardingCategory(cat.id)"
-              :class="[
-                'p-4 rounded-xl border-2 transition-all text-left',
-                selectedOnboardingCategories.includes(cat.id)
-                  ? 'border-purple-500 bg-purple-500/20 text-purple-300'
-                  : 'border-white/10 bg-white/5 text-white/70 hover:border-white/30 hover:bg-white/10'
-              ]"
-            >
-              <div class="font-medium">{{ cat.name }}</div>
-              <div class="text-xs opacity-60 mt-1">{{ cat.description || 'Notícias sobre ' + cat.name }}</div>
-            </button>
-          </div>
-          
-          <!-- Selecionadas -->
-          <div class="mb-6 p-3 rounded-lg bg-white/5">
-            <div class="text-sm text-white/50 mb-2">
-              Selecionadas: {{ selectedOnboardingCategories.length }}/6
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <span 
-                v-for="catId in selectedOnboardingCategories" 
-                :key="catId"
-                class="px-3 py-1 rounded-full bg-purple-500/30 text-purple-300 text-sm"
-              >
-                {{ categories.find(c => c.id === catId)?.name }}
-                <button @click="toggleOnboardingCategory(catId)" class="ml-1 hover:text-white">×</button>
-              </span>
-              <span v-if="selectedOnboardingCategories.length === 0" class="text-white/30 text-sm">
-                Nenhuma categoria selecionada
-              </span>
-            </div>
-          </div>
-          
-          <!-- Botões -->
-          <div class="flex gap-3">
-            <button 
-              @click="skipOnboarding"
-              class="flex-1 px-4 py-3 rounded-lg bg-white/10 text-white/70 hover:bg-white/20"
-            >
-              Pular
-            </button>
-            <button 
-              @click="saveOnboardingPreferences"
-              :disabled="selectedOnboardingCategories.length === 0"
-              :class="[
-                'flex-1 px-4 py-3 rounded-lg font-medium transition-all',
-                selectedOnboardingCategories.length > 0
-                  ? 'bg-purple-500 text-white hover:bg-purple-600'
-                  : 'bg-white/10 text-white/30 cursor-not-allowed'
-              ]"
-            >
-              Começar com {{ selectedOnboardingCategories.length }} categoria{{ selectedOnboardingCategories.length !== 1 ? 's' : '' }}
-            </button>
-          </div>
-          
-          <p class="text-xs text-white/40 text-center mt-4">
-            Você pode mudar suas preferências a qualquer momento
-          </p>
-        </div>
-      </div>
-    </Teleport>
   </div>
+  
+  <!-- Onboarding Modal - Seleção de Categorias (FORA do v-if/v-else para sempre estar disponível) -->
+  <Teleport to="body">
+    <div v-if="showOnboardingModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+      <div class="relative glass-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="text-center mb-6">
+          <div class="text-5xl mb-3">🎯</div>
+          <h2 class="text-2xl font-bold text-white mb-2">Personalize seu Feed</h2>
+          <p class="text-white/60">Selecione até 6 categorias que mais te interessam</p>
+          <p class="text-white/40 text-sm mt-1">Isso ajuda a criar seu feed "For You" personalizado</p>
+        </div>
+        
+        <!-- Categorias Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+          <button
+            v-for="cat in categories.filter(c => c.name && c.name !== 'null')"
+            :key="cat.id"
+            @click="toggleOnboardingCategory(cat.id)"
+            :class="[
+              'p-4 rounded-xl border-2 transition-all text-left',
+              selectedOnboardingCategories.includes(cat.id)
+                ? 'border-purple-500 bg-purple-500/20 text-purple-300'
+                : 'border-white/10 bg-white/5 text-white/70 hover:border-white/30 hover:bg-white/10'
+            ]"
+          >
+            <div class="font-medium">{{ cat.name }}</div>
+            <div class="text-xs opacity-60 mt-1">{{ cat.description || 'Notícias sobre ' + cat.name }}</div>
+          </button>
+        </div>
+        
+        <!-- Selecionadas -->
+        <div class="mb-6 p-3 rounded-lg bg-white/5">
+          <div class="text-sm text-white/50 mb-2">
+            Selecionadas: {{ selectedOnboardingCategories.length }}/6
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span 
+              v-for="catId in selectedOnboardingCategories" 
+              :key="catId"
+              class="px-3 py-1 rounded-full bg-purple-500/30 text-purple-300 text-sm"
+            >
+              {{ categories.find(c => c.id === catId)?.name }}
+              <button @click="toggleOnboardingCategory(catId)" class="ml-1 hover:text-white">×</button>
+            </span>
+            <span v-if="selectedOnboardingCategories.length === 0" class="text-white/30 text-sm">
+              Nenhuma categoria selecionada
+            </span>
+          </div>
+        </div>
+        
+        <!-- Erro -->
+        <div v-if="onboardingError" class="mb-4 p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 text-sm">
+          {{ onboardingError }}
+        </div>
+        
+        <!-- Botões -->
+        <div class="flex gap-3">
+          <button 
+            @click="skipOnboarding"
+            :disabled="onboardingLoading"
+            class="flex-1 px-4 py-3 rounded-lg bg-white/10 text-white/70 hover:bg-white/20 disabled:opacity-50"
+          >
+            Pular
+          </button>
+          <button 
+            @click="saveOnboardingPreferences"
+            :disabled="selectedOnboardingCategories.length === 0 || onboardingLoading"
+            :class="[
+              'flex-1 px-4 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2',
+              selectedOnboardingCategories.length > 0 && !onboardingLoading
+                ? 'bg-purple-500 text-white hover:bg-purple-600'
+                : 'bg-white/10 text-white/30 cursor-not-allowed'
+            ]"
+          >
+            <span v-if="onboardingLoading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+            <span v-else>
+              Começar com {{ selectedOnboardingCategories.length }} categoria{{ selectedOnboardingCategories.length !== 1 ? 's' : '' }}
+            </span>
+          </button>
+        </div>
+        
+        <p class="text-xs text-white/40 text-center mt-4">
+          Você pode mudar suas preferências a qualquer momento
+        </p>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style>
