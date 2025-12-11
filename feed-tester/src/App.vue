@@ -39,6 +39,7 @@ const feedMode = ref('chronological')
 // Interaction tracking
 const interactionQueue = ref([])
 const interactionInterval = ref(null)
+const statsRefreshInterval = ref(null)
 const viewStartTimes = ref(new Map()) // track view duration
 
 // Computed
@@ -244,6 +245,9 @@ function handleItemClick(item) {
   
   window.open(item.url, '_blank')
   
+  // Envia interação imediatamente para feedback em tempo real
+  sendInteractions()
+  
   // Simulate view end after 5 seconds
   setTimeout(() => {
     const startTime = viewStartTimes.value.get(item.id)
@@ -251,6 +255,8 @@ function handleItemClick(item) {
       const duration = Date.now() - startTime
       trackInteraction(item.id, 'view', { duration })
       viewStartTimes.value.delete(item.id)
+      // Envia view e atualiza stats
+      sendInteractions()
     }
   }, 5000)
 }
@@ -275,6 +281,8 @@ async function sendInteractions() {
     
     if (data.success) {
       addLog('success', `✅ ${interactions.length} interações enviadas`)
+      // Atualiza stats e preferências em tempo real após enviar interações
+      await refreshUserStats()
     } else {
       addLog('error', 'Erro ao enviar interações', data)
       // Re-queue failed interactions
@@ -283,6 +291,29 @@ async function sendInteractions() {
   } catch (e) {
     addLog('error', 'Erro ao enviar interações', e.message)
     interactionQueue.value.push(...interactions)
+  }
+}
+
+// Atualiza estatísticas e preferências em tempo real (sem log)
+async function refreshUserStats() {
+  if (!currentUserId.value) return
+
+  try {
+    // Atualiza preferências
+    const prefsRes = await fetch(`${GATEWAY_URL}/api/users/${currentUserId.value}/preferences`)
+    const prefsData = await prefsRes.json()
+    if (prefsData.success) {
+      userPreferences.value = prefsData.data || []
+    }
+
+    // Atualiza stats
+    const statsRes = await fetch(`${GATEWAY_URL}/api/interactions/user/${currentUserId.value}/stats`)
+    const statsData = await statsRes.json()
+    if (statsData.success) {
+      userStats.value = statsData.data
+    }
+  } catch (e) {
+    // Silencioso - não mostra erro para não poluir logs
   }
 }
 
@@ -455,13 +486,21 @@ onMounted(() => {
     loadUserData()
   }
   
-  // Start interaction sending interval
+  // Start interaction sending interval (backup - a cada 10s)
   interactionInterval.value = setInterval(sendInteractions, 10000)
+  
+  // Start stats refresh interval (a cada 30s para manter sincronizado)
+  statsRefreshInterval.value = setInterval(() => {
+    if (currentUserId.value) {
+      refreshUserStats()
+    }
+  }, 30000)
 })
 
 onUnmounted(() => {
   if (ws.value) ws.value.close()
   if (interactionInterval.value) clearInterval(interactionInterval.value)
+  if (statsRefreshInterval.value) clearInterval(statsRefreshInterval.value)
   sendInteractions() // Send remaining interactions
 })
 </script>
