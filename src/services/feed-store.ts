@@ -55,11 +55,9 @@ class FeedStore {
    */
   list(options: {
     limit?: number;
-    sources?: ('youtube' | 'news')[];
-    types?: ('video' | 'live' | 'article')[];
     categories?: string[];
   } = {}): FeedItem[] {
-    const { limit = 50, sources, types, categories } = options;
+    const { limit = 50, categories } = options;
     
     let result: FeedItem[] = [];
     
@@ -67,18 +65,8 @@ class FeedStore {
       const item = this.items.get(id);
       if (!item) continue;
 
-      // Filtro por source
-      if (sources && sources.length > 0 && !sources.includes(item.source)) {
-        continue;
-      }
-
-      // Filtro por type
-      if (types && types.length > 0 && !types.includes(item.type)) {
-        continue;
-      }
-
-      // Filtro por category (só para news) - usando slug
-      if (categories && categories.length > 0 && item.source === 'news') {
+      // Filtro por category - usando slug
+      if (categories && categories.length > 0) {
         if (!item.category) continue;
         
         // Filtra por slug (normalizado para lowercase)
@@ -101,25 +89,13 @@ class FeedStore {
   }
 
   /**
-   * Lista lives ao vivo agora
+   * Retorna estatísticas do store
    */
-  getLives(): FeedItem[] {
-    return this.list({ types: ['live'] }).filter(item => item.isLive === true);
-  }
-
-  /**
-   * Conta itens por source
-   */
-  countBySource(): { youtube: number; news: number; total: number } {
-    let youtube = 0;
-    let news = 0;
-
-    for (const item of this.items.values()) {
-      if (item.source === 'youtube') youtube++;
-      else if (item.source === 'news') news++;
-    }
-
-    return { youtube, news, total: this.items.size };
+  getStats(): { news: number; total: number } {
+    return { 
+      news: this.items.size,
+      total: this.items.size 
+    };
   }
 
   /**
@@ -132,4 +108,3 @@ class FeedStore {
 }
 
 export const feedStore = new FeedStore();
-

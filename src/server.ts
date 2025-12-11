@@ -2,7 +2,6 @@ import express from 'express';
 import http from 'http';
 import config from './config';
 import apiRouter from './routes/api';
-import { youtubeClient } from './clients/youtube-client';
 import { newsClient } from './clients/news-client';
 import { feedStore } from './services/feed-store';
 import { wsBroadcaster } from './services/ws-broadcaster';
@@ -36,7 +35,6 @@ app.get('/', (req, res) => {
       websocket: '/ws',
     },
     backends: {
-      youtube: youtubeClient.getStatus(),
       news: newsClient.getStatus(),
     },
   });
@@ -54,26 +52,6 @@ wsBroadcaster.initialize(server);
 
 // Configura handlers dos clientes SSE
 function setupSSEHandlers(): void {
-  // YouTube handlers
-  youtubeClient.on('new_item', (item: FeedItem) => {
-    feedStore.add(item);
-    wsBroadcaster.broadcastNewItem(item);
-  });
-
-  youtubeClient.on('live_started', (item: FeedItem) => {
-    feedStore.add(item);
-    wsBroadcaster.broadcastLiveStarted(item);
-  });
-
-  youtubeClient.on('live_ended', (item: FeedItem) => {
-    feedStore.update(item.id, { isLive: false });
-    wsBroadcaster.broadcastLiveEnded(item);
-  });
-
-  youtubeClient.on('status', (status: BackendStatus) => {
-    wsBroadcaster.broadcastBackendStatus(status);
-  });
-
   // News handlers
   newsClient.on('new_item', (item: FeedItem) => {
     feedStore.add(item);
@@ -90,7 +68,6 @@ async function start(): Promise<void> {
   console.log('\n🚀 Feed Gateway iniciando...\n');
   console.log('📋 Configuração:');
   console.log(`   - Port: ${config.port}`);
-  console.log(`   - YouTube Backend: ${config.youtubeBackendUrl}`);
   console.log(`   - News Backend: ${config.newsBackendUrl}`);
   console.log(`   - Max History: ${config.maxHistoryItems} itens`);
   console.log('');
@@ -98,9 +75,8 @@ async function start(): Promise<void> {
   // Configura handlers
   setupSSEHandlers();
 
-  // Conecta aos backends
-  console.log('🔌 Conectando aos backends...\n');
-  youtubeClient.connect();
+  // Conecta ao backend de notícias
+  console.log('🔌 Conectando ao backend...\n');
   newsClient.connect();
 
   // Inicia servidor HTTP
@@ -116,7 +92,6 @@ async function start(): Promise<void> {
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n🛑 Encerrando gateway...');
-  youtubeClient.disconnect();
   newsClient.disconnect();
   wsBroadcaster.close();
   server.close(() => {
@@ -127,7 +102,6 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   console.log('\n🛑 Encerrando gateway...');
-  youtubeClient.disconnect();
   newsClient.disconnect();
   wsBroadcaster.close();
   server.close(() => {
@@ -137,4 +111,3 @@ process.on('SIGTERM', () => {
 
 // Inicia
 start().catch(console.error);
-

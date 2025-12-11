@@ -8,24 +8,18 @@ export interface Category {
 }
 
 /**
- * Item unificado do feed (normalizado de YouTube ou News)
+ * Item unificado do feed (normalizado de News)
  */
 export interface FeedItem {
-  id: string;                    // "yt_abc123" | "news_456"
-  source: 'youtube' | 'news';
-  type: 'video' | 'live' | 'article';
+  id: string;                    // "news_456"
+  source: 'news';
+  type: 'article';
   
   // Conteúdo
   title: string;
   summary?: string;
   imageUrl: string;
   url: string;
-  
-  // YouTube específico
-  channelId?: string;
-  channelName?: string;
-  channelThumbnail?: string;
-  isLive?: boolean;
   
   // News específico
   siteId?: number;
@@ -39,10 +33,10 @@ export interface FeedItem {
 }
 
 /**
- * Status de conexão de um backend
+ * Status de conexão do backend
  */
 export interface BackendStatus {
-  source: 'youtube' | 'news';
+  source: 'news';
   status: 'connected' | 'disconnected' | 'connecting';
   url: string;
   lastEvent?: string;
@@ -53,10 +47,9 @@ export interface BackendStatus {
  * Filtros de subscription do cliente WebSocket
  */
 export interface SubscriptionFilters {
-  sources?: ('youtube' | 'news')[];
-  types?: ('video' | 'live' | 'article')[];
+  sources?: ('news')[];
+  types?: ('article')[];
   categories?: string[];
-  channels?: string[];
 }
 
 /**
@@ -76,37 +69,15 @@ export interface ClientMessage {
   action: 'subscribe' | 'get_history' | 'ping';
   filters?: SubscriptionFilters;
   limit?: number;
-  sources?: ('youtube' | 'news')[];
+  sources?: ('news')[];
 }
 
 /**
  * Mensagem do gateway para o cliente
  */
 export interface GatewayMessage {
-  event: 'connected' | 'new_item' | 'live_started' | 'live_ended' | 'history' | 'pong' | 'backend_status' | 'error';
+  event: 'connected' | 'new_item' | 'history' | 'pong' | 'backend_status' | 'error';
   data: any;
-}
-
-/**
- * Evento do YouTube backend
- */
-export interface YouTubeEvent {
-  video: {
-    videoId: string;
-    title: string;
-    publishedAt: string;
-    thumbnailUrl: string;
-    type: 'video' | 'short' | 'live' | 'scheduled' | 'vod';
-    isLive: boolean;
-    isLiveContent: boolean;
-    isUpcoming: boolean;
-  };
-  channel: {
-    channelId: string;
-    title: string;
-    thumbnailUrl?: string;
-  };
-  timestamp: string;
 }
 
 /**
@@ -131,7 +102,7 @@ export interface NewsEvent {
  * Interação do usuário com um artigo
  */
 export interface Interaction {
-  article_id: string;           // "news_123" ou "yt_abc123"
+  article_id: string;           // "news_123"
   interaction_type: 'click' | 'view' | 'scroll_stop' | 'impression';
   duration?: number;            // tempo em ms (para 'view')
   position?: number;            // posição no feed
@@ -152,10 +123,8 @@ export interface InteractionBatch {
 export interface GatewayConfig {
   port: number;
   host: string;
-  youtubeBackendUrl: string;
   newsBackendUrl: string;
   maxHistoryItems: number;
   sseReconnectDelay: number;
   wsHeartbeatInterval: number;
 }
-

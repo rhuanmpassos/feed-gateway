@@ -3,7 +3,6 @@ import { IncomingMessage } from 'http';
 import { URL } from 'url';
 import { WSClient, SubscriptionFilters, FeedItem, ClientMessage, GatewayMessage, BackendStatus } from '../types';
 import { feedStore } from './feed-store';
-import { youtubeClient } from '../clients/youtube-client';
 import { newsClient } from '../clients/news-client';
 import config from '../config';
 
@@ -40,15 +39,11 @@ class WSBroadcaster {
     
     // Parse query params para filtros iniciais
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
-    const sourcesParam = url.searchParams.get('sources');
     const typesParam = url.searchParams.get('types');
     
     const filters: SubscriptionFilters = {};
-    if (sourcesParam) {
-      filters.sources = sourcesParam.split(',') as ('youtube' | 'news')[];
-    }
     if (typesParam) {
-      filters.types = typesParam.split(',') as ('video' | 'live' | 'article')[];
+      filters.types = typesParam.split(',') as ('article')[];
     }
 
     const client: WSClient = {
@@ -67,7 +62,6 @@ class WSBroadcaster {
       data: {
         clientId,
         backends: {
-          youtube: youtubeClient.getStatus(),
           news: newsClient.getStatus(),
         },
         filters,
@@ -108,8 +102,6 @@ class WSBroadcaster {
         case 'get_history':
           const history = feedStore.list({
             limit: message.limit || 50,
-            sources: message.sources || client.filters.sources,
-            types: client.filters.types,
             categories: client.filters.categories,
           });
           this.sendToClient(client, { event: 'history', data: history });
@@ -146,28 +138,6 @@ class WSBroadcaster {
   }
 
   /**
-   * Broadcast de live started
-   */
-  broadcastLiveStarted(item: FeedItem): void {
-    for (const client of this.clients.values()) {
-      if (this.shouldReceive(client, item)) {
-        this.sendToClient(client, { event: 'live_started', data: item });
-      }
-    }
-  }
-
-  /**
-   * Broadcast de live ended
-   */
-  broadcastLiveEnded(item: FeedItem): void {
-    for (const client of this.clients.values()) {
-      if (this.shouldReceive(client, item)) {
-        this.sendToClient(client, { event: 'live_ended', data: item });
-      }
-    }
-  }
-
-  /**
    * Broadcast de status de backend
    */
   broadcastBackendStatus(status: BackendStatus): void {
@@ -183,13 +153,6 @@ class WSBroadcaster {
   private shouldReceive(client: WSClient, item: FeedItem): boolean {
     const { filters } = client;
 
-    // Filtro por source
-    if (filters.sources && filters.sources.length > 0) {
-      if (!filters.sources.includes(item.source)) {
-        return false;
-      }
-    }
-
     // Filtro por type
     if (filters.types && filters.types.length > 0) {
       if (!filters.types.includes(item.type)) {
@@ -197,8 +160,8 @@ class WSBroadcaster {
       }
     }
 
-    // Filtro por category (só para news) - usando slug
-    if (filters.categories && filters.categories.length > 0 && item.source === 'news') {
+    // Filtro por category - usando slug
+    if (filters.categories && filters.categories.length > 0) {
       if (!item.category) return false;
       
       // Filtra por slug (normalizado para lowercase)
@@ -206,13 +169,6 @@ class WSBroadcaster {
       const filterSlugs = filters.categories.map(c => c.toLowerCase().trim());
       
       if (!filterSlugs.includes(itemSlug)) {
-        return false;
-      }
-    }
-
-    // Filtro por channel (só para youtube)
-    if (filters.channels && filters.channels.length > 0 && item.source === 'youtube') {
-      if (!item.channelId || !filters.channels.includes(item.channelId)) {
         return false;
       }
     }
@@ -246,29 +202,19 @@ class WSBroadcaster {
       totalClients: this.clients.size,
       clientsByFilter: {
         all: 0,
-        youtubeOnly: 0,
-        newsOnly: 0,
         withCategories: 0,
-        withChannels: 0,
       },
     };
 
     for (const client of this.clients.values()) {
       const { filters } = client;
       
-      if (!filters.sources || filters.sources.length === 0) {
+      if (!filters.categories || filters.categories.length === 0) {
         stats.clientsByFilter.all++;
-      } else if (filters.sources.length === 1) {
-        if (filters.sources[0] === 'youtube') stats.clientsByFilter.youtubeOnly++;
-        else stats.clientsByFilter.newsOnly++;
       }
       
       if (filters.categories && filters.categories.length > 0) {
         stats.clientsByFilter.withCategories++;
-      }
-      
-      if (filters.channels && filters.channels.length > 0) {
-        stats.clientsByFilter.withChannels++;
       }
     }
 
@@ -293,4 +239,3 @@ class WSBroadcaster {
 }
 
 export const wsBroadcaster = new WSBroadcaster();
-

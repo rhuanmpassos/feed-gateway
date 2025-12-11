@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import { feedStore } from '../services/feed-store';
-import { youtubeClient } from '../clients/youtube-client';
 import { newsClient } from '../clients/news-client';
 import { wsBroadcaster } from '../services/ws-broadcaster';
 import config from '../config';
@@ -10,11 +9,11 @@ const router = Router();
 
 /**
  * GET /api/status
- * Status do gateway e backends
+ * Status do gateway e backend
  */
 router.get('/status', (req: Request, res: Response) => {
   const wsStats = wsBroadcaster.getStats();
-  const feedStats = feedStore.countBySource();
+  const feedStats = feedStore.getStats();
 
   res.json({
     gateway: {
@@ -23,7 +22,6 @@ router.get('/status', (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
     },
     backends: {
-      youtube: youtubeClient.getStatus(),
       news: newsClient.getStatus(),
     },
     websocket: wsStats,
@@ -37,23 +35,15 @@ router.get('/status', (req: Request, res: Response) => {
 
 /**
  * GET /api/feed
- * Feed unificado com filtros
- * Query params: source, type, category, limit
+ * Feed de notícias com filtros
+ * Query params: category, limit
  */
 router.get('/feed', (req: Request, res: Response) => {
-  const { source, type, category, limit } = req.query;
+  const { category, limit } = req.query;
 
   const options: any = {
     limit: limit ? parseInt(limit as string) : 50,
   };
-
-  if (source) {
-    options.sources = (source as string).split(',') as ('youtube' | 'news')[];
-  }
-
-  if (type) {
-    options.types = (type as string).split(',') as ('video' | 'live' | 'article')[];
-  }
 
   if (category) {
     options.categories = (category as string).split(',');
@@ -64,18 +54,9 @@ router.get('/feed', (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/lives
- * Lives ao vivo agora
- */
-router.get('/lives', (req: Request, res: Response) => {
-  const lives = feedStore.getLives();
-  res.json(lives);
-});
-
-/**
  * POST /api/bookmark
  * Proxy para salvar bookmark
- * Body: { id: "yt_abc123" } ou { id: "news_456" }
+ * Body: { id: "news_456" }
  */
 router.post('/bookmark', async (req: Request, res: Response) => {
   const { id } = req.body;
@@ -85,17 +66,6 @@ router.post('/bookmark', async (req: Request, res: Response) => {
   }
 
   try {
-    if (id.startsWith('yt_')) {
-      // Proxy para YouTube
-      const videoId = id.replace('yt_', '');
-      const response = await fetch(
-        `${config.youtubeBackendUrl}/api/videos/${videoId}/bookmark`,
-        { method: 'POST' }
-      );
-      const data = await response.json();
-      return res.status(response.status).json(data);
-    } 
-    
     if (id.startsWith('news_')) {
       // Proxy para News
       const articleId = id.replace('news_', '');
@@ -107,7 +77,7 @@ router.post('/bookmark', async (req: Request, res: Response) => {
       return res.status(response.status).json(data);
     }
 
-    return res.status(400).json({ error: 'ID inválido. Use formato yt_xxx ou news_xxx' });
+    return res.status(400).json({ error: 'ID inválido. Use formato news_xxx' });
   } catch (error) {
     console.error('Erro ao fazer bookmark:', error);
     return res.status(500).json({ error: 'Erro ao comunicar com backend' });
@@ -122,17 +92,6 @@ router.delete('/bookmark/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    if (id.startsWith('yt_')) {
-      // Proxy para YouTube
-      const videoId = id.replace('yt_', '');
-      const response = await fetch(
-        `${config.youtubeBackendUrl}/api/videos/${videoId}/bookmark`,
-        { method: 'DELETE' }
-      );
-      const data = await response.json();
-      return res.status(response.status).json(data);
-    }
-    
     if (id.startsWith('news_')) {
       // Proxy para News
       const articleId = id.replace('news_', '');
@@ -144,7 +103,7 @@ router.delete('/bookmark/:id', async (req: Request, res: Response) => {
       return res.status(response.status).json(data);
     }
 
-    return res.status(400).json({ error: 'ID inválido. Use formato yt_xxx ou news_xxx' });
+    return res.status(400).json({ error: 'ID inválido. Use formato news_xxx' });
   } catch (error) {
     console.error('Erro ao remover bookmark:', error);
     return res.status(500).json({ error: 'Erro ao comunicar com backend' });
@@ -153,35 +112,11 @@ router.delete('/bookmark/:id', async (req: Request, res: Response) => {
 
 /**
  * GET /api/bookmarks
- * Lista todos os bookmarks (combina dos dois backends)
+ * Lista todos os bookmarks
  */
 router.get('/bookmarks', async (req: Request, res: Response) => {
   try {
     const results: any[] = [];
-
-    // Busca do YouTube
-    try {
-      const ytResponse = await fetch(`${config.youtubeBackendUrl}/api/bookmarked`);
-      if (ytResponse.ok) {
-        const ytData = await ytResponse.json() as any[];
-        for (const video of ytData) {
-          results.push({
-            id: `yt_${video.video_id}`,
-            source: 'youtube',
-            type: video.is_live ? 'live' : 'video',
-            title: video.title,
-            imageUrl: video.thumbnail_url,
-            url: `https://www.youtube.com/watch?v=${video.video_id}`,
-            channelId: video.channel_id,
-            channelName: video.channel_title,
-            publishedAt: video.published_at,
-            bookmarkedAt: video.updated_at,
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao buscar bookmarks do YouTube:', error);
-    }
 
     // Busca do News
     try {
@@ -282,4 +217,3 @@ router.get('/categories', async (req: Request, res: Response) => {
 });
 
 export default router;
-

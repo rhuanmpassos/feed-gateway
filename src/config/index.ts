@@ -8,8 +8,7 @@ export const config: GatewayConfig = {
   port: parseInt(process.env.PORT || '3002'),
   host: process.env.HOST || '0.0.0.0',
   
-  // URLs dos backends
-  youtubeBackendUrl: process.env.YOUTUBE_BACKEND_URL || 'http://localhost:3001',
+  // URL do backend de notícias
   newsBackendUrl: process.env.NEWS_BACKEND_URL || 'http://localhost:3000',
   
   // Configurações
@@ -19,4 +18,3 @@ export const config: GatewayConfig = {
 };
 
 export default config;
-
