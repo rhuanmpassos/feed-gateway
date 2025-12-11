@@ -1,0 +1,25 @@
+# render.yaml para feed-gateway
+services:
+  - type: web
+    name: feed-gateway
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3002
+      - key: HOST
+        value: 0.0.0.0
+      # Feed Extractor na EC2 (HTTP - comunicação interna)
+      - key: NEWS_BACKEND_URL
+        value: http://54.87.195.12:3000
+      # YouTube Extractor no Render (atualizar após deploy)
+      - key: YOUTUBE_BACKEND_URL
+        value: https://youtube-extractor.onrender.com
+      - key: MAX_HISTORY_ITEMS
+        value: 500
+      - key: SSE_RECONNECT_DELAY
+        value: 5000
+      - key: WS_HEARTBEAT_INTERVAL
+        value: 30000
+

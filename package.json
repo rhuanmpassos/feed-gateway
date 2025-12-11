@@ -1,0 +1,39 @@
+{
+  "name": "feed-gateway",
+  "version": "1.0.0",
+  "description": "Gateway unificado para feeds de YouTube e Notícias com WebSocket",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts"
+  },
+  "keywords": [
+    "gateway",
+    "websocket",
+    "sse",
+    "feed",
+    "youtube",
+    "news"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "eventsource": "^2.0.2",
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/eventsource": "^1.1.15",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
