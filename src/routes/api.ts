@@ -245,4 +245,57 @@ router.get('/feeds/for-you', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/users
+ * Cria ou atualiza usuário (proxy para backend)
+ * Body: { email: string, name?: string }
+ */
+router.post('/users', async (req: Request, res: Response) => {
+  try {
+    const response = await fetch(`${config.newsBackendUrl}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/users/:id
+ * Busca usuário por ID
+ */
+router.get('/users/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/users/${id}`);
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/users/email/:email
+ * Busca usuário por email
+ */
+router.get('/users/email/:email', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/users/email/${encodeURIComponent(email)}`);
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
 export default router;
