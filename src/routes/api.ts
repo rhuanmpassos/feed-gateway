@@ -230,7 +230,7 @@ router.get('/feeds/for-you', async (req: Request, res: Response) => {
     }
 
     const response = await fetch(
-      `${config.newsBackendUrl}/api/feeds/for-you?user_id=${user_id}&limit=${limit}`
+      `${config.newsBackendUrl}/feeds/for-you?user_id=${user_id}&limit=${limit}`
     );
     
     if (response.ok) {
