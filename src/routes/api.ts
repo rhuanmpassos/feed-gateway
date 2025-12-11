@@ -298,4 +298,36 @@ router.get('/users/email/:email', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/users/:id/preferences
+ * Busca preferências de categoria do usuário
+ */
+router.get('/users/:id/preferences', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/users/${id}/preferences`);
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar preferências:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/interactions/user/:userId/stats
+ * Estatísticas de interações do usuário
+ */
+router.get('/interactions/user/:userId/stats', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/user/${userId}/stats`);
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
 export default router;
