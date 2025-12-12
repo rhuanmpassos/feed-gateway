@@ -21,28 +21,31 @@ Content-Type: application/json
 
 ## Índice
 
-1. [Autenticação](#autenticação)
+1. [Usuários (Registro)](#usuários-registro)
 2. [Feeds](#feeds)
 3. [Artigos](#artigos)
 4. [Interações](#interações)
 5. [Sessões](#sessões)
 6. [Bookmarks](#bookmarks)
-7. [Usuários](#usuários)
+7. [Perfil do Usuário](#perfil-do-usuário)
 8. [Categorias](#categorias)
 
 ---
 
-## Autenticação
+## Usuários (Registro)
 
-### POST /api/auth/register
+> ⚠️ **Nota**: Atualmente o sistema usa um modelo simplificado sem autenticação JWT. 
+> O usuário é identificado apenas por email. Para um MVP, isso é suficiente.
+> Autenticação completa pode ser adicionada futuramente.
 
-Registra novo usuário.
+### POST /api/users
+
+Cria ou busca usuário por email.
 
 **Request:**
 ```json
 {
   "email": "usuario@email.com",
-  "password": "senha123",
   "name": "João Silva"
 }
 ```
@@ -52,33 +55,38 @@ Registra novo usuário.
 {
   "success": true,
   "data": {
-    "user": {
-      "id": 123,
-      "email": "usuario@email.com",
-      "name": "João Silva",
-      "created_at": "2025-12-11T22:00:00.000Z"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }
+    "id": 123,
+    "email": "usuario@email.com",
+    "name": "João Silva",
+    "created_at": "2025-12-11T22:00:00.000Z"
+  },
+  "isNew": true
 }
 ```
 
-**Errors:**
-- `400`: Email já cadastrado
-- `400`: Dados inválidos
+**Response (200) - Usuário já existe:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "email": "usuario@email.com",
+    "name": "João Silva",
+    "created_at": "2025-11-26T10:00:00.000Z"
+  },
+  "isNew": false
+}
+```
 
 ---
 
-### POST /api/auth/login
+### GET /api/users/email/:email
 
-Login de usuário existente.
+Busca usuário por email.
 
 **Request:**
-```json
-{
-  "email": "usuario@email.com",
-  "password": "senha123"
-}
+```
+GET /api/users/email/usuario@email.com
 ```
 
 **Response (200):**
@@ -86,19 +94,21 @@ Login de usuário existente.
 {
   "success": true,
   "data": {
-    "user": {
-      "id": 123,
-      "email": "usuario@email.com",
-      "name": "João Silva"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    "id": 123,
+    "email": "usuario@email.com",
+    "name": "João Silva",
+    "created_at": "2025-11-26T10:00:00.000Z"
   }
 }
 ```
 
-**Errors:**
-- `401`: Email ou senha incorretos
-- `429`: Muitas tentativas
+**Response (404):**
+```json
+{
+  "success": false,
+  "error": "Usuário não encontrado"
+}
+```
 
 ---
 
@@ -755,11 +765,11 @@ GET /api/bookmarks?user_id=123&limit=20
 
 ---
 
-## Usuários
+## Perfil do Usuário
 
 ### GET /api/users/:id/profile
 
-**Descrição:** Perfil resumido do usuário.
+**Descrição:** Perfil resumido do usuário (estatísticas e thresholds).
 
 **Request:**
 ```
