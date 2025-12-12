@@ -863,4 +863,154 @@ router.get('/feeds/predict', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== FEED INTELIGENTE (NOVO) ====================
+
+/**
+ * GET /api/feeds/intelligent (ou /api/feeds/smart)
+ * Feed inteligente com classificação hierárquica IPTC
+ * 
+ * Features:
+ * - 80% exploitation (baseado em preferências hierárquicas)
+ * - 20% exploration (descoberta de novos interesses)
+ * - Scores relativos (normalização softmax)
+ * - Decay temporal
+ * - Feedback negativo implícito
+ * 
+ * Query: user_id, limit, offset
+ */
+router.get('/feeds/intelligent', async (req: Request, res: Response) => {
+  try {
+    const { user_id, limit = 50, offset = 0 } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' });
+    }
+
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/intelligent?user_id=${user_id}&limit=${limit}&offset=${offset}`,
+      { headers }
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar feed inteligente' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+// Alias: /api/feeds/smart
+router.get('/feeds/smart', async (req: Request, res: Response) => {
+  try {
+    const { user_id, limit = 50, offset = 0 } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' });
+    }
+
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/intelligent?user_id=${user_id}&limit=${limit}&offset=${offset}`,
+      { headers }
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar feed inteligente' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/feeds/preferences/:user_id
+ * Busca preferências hierárquicas do usuário (scores relativos)
+ */
+router.get('/feeds/preferences/:user_id', async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/preferences/${user_id}`,
+      { headers }
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar preferências' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * POST /api/feeds/preferences/:user_id/recalculate
+ * Recalcula preferências do usuário (normalização + decay + feedback negativo)
+ */
+router.post('/feeds/preferences/:user_id/recalculate', async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/preferences/${user_id}/recalculate`,
+      { method: 'POST', headers }
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao recalcular preferências' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/categories/hierarchical
+ * Lista categorias em estrutura hierárquica (IPTC)
+ */
+router.get('/categories/hierarchical', async (req: Request, res: Response) => {
+  try {
+    const response = await fetch(`${config.newsBackendUrl}/api/categories/hierarchical`);
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    return res.status(500).json({ error: 'Erro ao buscar categorias hierárquicas' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
 export default router;
