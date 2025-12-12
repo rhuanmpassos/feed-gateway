@@ -371,6 +371,10 @@ router.post('/interactions', async (req: Request, res: Response) => {
   }
 
   try {
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
     // Normaliza IDs: "news_123" → 123
     const newsInteractions = interactions
       .filter((i: Interaction) => i.article_id?.startsWith('news_'))
@@ -389,7 +393,7 @@ router.post('/interactions', async (req: Request, res: Response) => {
     if (newsInteractions.length > 0) {
       const response = await fetch(`${config.newsBackendUrl}/api/interactions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           user_id,
           session_id,
@@ -441,8 +445,13 @@ router.get('/feeds/for-you', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'user_id é obrigatório' });
     }
 
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
     const response = await fetch(
-      `${config.newsBackendUrl}/feeds/for-you?user_id=${user_id}&limit=${limit}`
+      `${config.newsBackendUrl}/feeds/for-you?user_id=${user_id}&limit=${limit}`,
+      { headers }
     );
     
     if (response.ok) {
@@ -485,7 +494,11 @@ router.post('/users', async (req: Request, res: Response) => {
 router.get('/users/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const response = await fetch(`${config.newsBackendUrl}/api/users/${id}`);
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
+    const response = await fetch(`${config.newsBackendUrl}/api/users/${id}`, { headers });
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error) {
@@ -517,7 +530,11 @@ router.get('/users/email/:email', async (req: Request, res: Response) => {
 router.get('/users/:id/preferences', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const response = await fetch(`${config.newsBackendUrl}/api/users/${id}/preferences`);
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
+    const response = await fetch(`${config.newsBackendUrl}/api/users/${id}/preferences`, { headers });
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error) {
@@ -534,9 +551,13 @@ router.get('/users/:id/preferences', async (req: Request, res: Response) => {
 router.put('/users/:id/preferences', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
     const response = await fetch(`${config.newsBackendUrl}/api/users/${id}/preferences`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(req.body)
     });
     const data = await response.json();
@@ -554,7 +575,11 @@ router.put('/users/:id/preferences', async (req: Request, res: Response) => {
 router.get('/interactions/user/:userId/stats', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const response = await fetch(`${config.newsBackendUrl}/api/interactions/user/${userId}/stats`);
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/user/${userId}/stats`, { headers });
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error) {
@@ -571,9 +596,13 @@ router.get('/interactions/user/:userId/stats', async (req: Request, res: Respons
  */
 router.post('/sessions', async (req: Request, res: Response) => {
   try {
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
     const response = await fetch(`${config.newsBackendUrl}/api/interactions/sessions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(req.body)
     });
     const data = await response.json();
@@ -591,8 +620,13 @@ router.post('/sessions', async (req: Request, res: Response) => {
 router.put('/sessions/:sessionId/end', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
     const response = await fetch(`${config.newsBackendUrl}/api/interactions/sessions/${sessionId}/end`, {
-      method: 'PUT'
+      method: 'PUT',
+      headers
     });
     const data = await response.json();
     return res.status(response.status).json(data);
@@ -609,7 +643,11 @@ router.put('/sessions/:sessionId/end', async (req: Request, res: Response) => {
 router.get('/sessions/user/:userId', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const response = await fetch(`${config.newsBackendUrl}/api/interactions/sessions/user/${userId}`);
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/sessions/user/${userId}`, { headers });
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error) {
@@ -627,7 +665,11 @@ router.get('/sessions/user/:userId', async (req: Request, res: Response) => {
 router.get('/users/:userId/profile', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const response = await fetch(`${config.newsBackendUrl}/api/interactions/users/${userId}/profile`);
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/users/${userId}/profile`, { headers });
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error) {
@@ -643,7 +685,11 @@ router.get('/users/:userId/profile', async (req: Request, res: Response) => {
 router.get('/users/:userId/patterns', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const response = await fetch(`${config.newsBackendUrl}/api/interactions/users/${userId}/patterns`);
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+    
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/users/${userId}/patterns`, { headers });
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error) {
@@ -667,8 +713,13 @@ router.get('/feeds/addictive', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'user_id é obrigatório' });
     }
 
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
     const response = await fetch(
-      `${config.newsBackendUrl}/feeds/addictive?user_id=${user_id}&limit=${limit}&offset=${offset}`
+      `${config.newsBackendUrl}/feeds/addictive?user_id=${user_id}&limit=${limit}&offset=${offset}`,
+      { headers }
     );
     
     if (response.ok) {
@@ -695,8 +746,13 @@ router.get('/feeds/addictive/more', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'user_id é obrigatório' });
     }
 
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
     const response = await fetch(
-      `${config.newsBackendUrl}/feeds/addictive/more?user_id=${user_id}&offset=${offset}&limit=${limit}`
+      `${config.newsBackendUrl}/feeds/addictive/more?user_id=${user_id}&offset=${offset}&limit=${limit}`,
+      { headers }
     );
     
     if (response.ok) {
@@ -718,8 +774,11 @@ router.get('/feeds/addictive/more', async (req: Request, res: Response) => {
 router.get('/feeds/breaking', async (req: Request, res: Response) => {
   try {
     const { limit = 10 } = req.query;
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
     
-    const response = await fetch(`${config.newsBackendUrl}/feeds/breaking?limit=${limit}`);
+    const response = await fetch(`${config.newsBackendUrl}/feeds/breaking?limit=${limit}`, { headers });
     
     if (response.ok) {
       const data = await response.json();
@@ -751,8 +810,13 @@ router.get('/feeds/predict', async (req: Request, res: Response) => {
       article_id = article_id.replace('news_', '');
     }
 
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
     const response = await fetch(
-      `${config.newsBackendUrl}/feeds/predict?user_id=${user_id}&article_id=${article_id}`
+      `${config.newsBackendUrl}/feeds/predict?user_id=${user_id}&article_id=${article_id}`,
+      { headers }
     );
     
     if (response.ok) {
