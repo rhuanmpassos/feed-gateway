@@ -220,3 +220,6 @@ docs/
 4. Implementar telas de onboarding
 5. Conectar com APIs do Gateway
 
+
+
+

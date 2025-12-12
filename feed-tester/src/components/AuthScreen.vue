@@ -13,8 +13,10 @@ const emit = defineEmits(['login', 'register'])
 const mode = ref('login') // 'login' | 'register'
 const name = ref('')
 const email = ref('')
+const password = ref('')
 const isLoading = ref(false)
 const localError = ref('')
+const showPassword = ref(false)
 
 // Watch para exibir erros externos
 watch(() => props.error, (newError) => {
@@ -37,6 +39,16 @@ async function handleSubmit() {
     return
   }
   
+  if (!password.value) {
+    localError.value = 'Digite sua senha'
+    return
+  }
+  
+  if (password.value.length < 6) {
+    localError.value = 'A senha deve ter pelo menos 6 caracteres'
+    return
+  }
+  
   if (mode.value === 'register' && !name.value) {
     localError.value = 'Digite seu nome'
     return
@@ -46,7 +58,8 @@ async function handleSubmit() {
   
   emit(mode.value === 'login' ? 'login' : 'register', {
     name: name.value,
-    email: email.value
+    email: email.value,
+    password: password.value
   })
 }
 </script>
@@ -140,6 +153,33 @@ async function handleSubmit() {
               />
             </div>
             
+            <!-- Password field -->
+            <div>
+              <label class="block text-sm text-white/70 mb-2 font-medium">Senha</label>
+              <div class="relative">
+                <input 
+                  v-model="password"
+                  :type="showPassword ? 'text' : 'password'"
+                  class="input-field pr-12"
+                  placeholder="••••••••"
+                />
+                <button 
+                  type="button"
+                  @click="showPassword = !showPassword"
+                  class="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+                >
+                  <svg v-if="showPassword" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
+                  <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                </button>
+              </div>
+              <p v-if="mode === 'register'" class="text-xs text-white/30 mt-1">Mínimo 6 caracteres</p>
+            </div>
+            
             <!-- Error message -->
             <Transition name="fade">
               <div v-if="localError" class="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 text-sm flex items-center gap-2">
@@ -166,7 +206,7 @@ async function handleSubmit() {
           <!-- Info text -->
           <p class="text-center text-white/40 text-sm mt-6">
             {{ mode === 'login' 
-              ? 'Entre com seu email para acessar as notícias' 
+              ? 'Entre com seu email e senha' 
               : 'Crie sua conta para personalizar seu feed' 
             }}
           </p>
@@ -184,8 +224,8 @@ async function handleSubmit() {
           <p class="text-xs text-white/50">Tempo Real</p>
         </div>
         <div class="feature-item p-4 rounded-2xl">
-          <div class="text-2xl mb-2">📊</div>
-          <p class="text-xs text-white/50">Suas Estatísticas</p>
+          <div class="text-2xl mb-2">🔒</div>
+          <p class="text-xs text-white/50">Autenticação Segura</p>
         </div>
       </div>
     </div>
@@ -365,4 +405,3 @@ async function handleSubmit() {
   opacity: 0;
 }
 </style>
-

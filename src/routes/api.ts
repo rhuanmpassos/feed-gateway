@@ -7,6 +7,120 @@ import { Interaction, InteractionBatch } from '../types';
 
 const router = Router();
 
+// ==================== AUTENTICAÇÃO ====================
+
+/**
+ * POST /api/auth/register
+ * Registra novo usuário
+ */
+router.post('/auth/register', async (req: Request, res: Response) => {
+  try {
+    const response = await fetch(`${config.newsBackendUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao registrar:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * POST /api/auth/login
+ * Login de usuário
+ */
+router.post('/auth/login', async (req: Request, res: Response) => {
+  try {
+    const response = await fetch(`${config.newsBackendUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao fazer login:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Retorna dados do usuário autenticado
+ */
+router.get('/auth/me', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, error: 'Token não fornecido' });
+    }
+
+    const response = await fetch(`${config.newsBackendUrl}/api/auth/me`, {
+      headers: { 'Authorization': authHeader }
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * POST /api/auth/refresh
+ * Renova token JWT
+ */
+router.post('/auth/refresh', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, error: 'Token não fornecido' });
+    }
+
+    const response = await fetch(`${config.newsBackendUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Authorization': authHeader }
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao renovar token:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * PUT /api/auth/password
+ * Atualiza senha do usuário
+ */
+router.put('/auth/password', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, error: 'Token não fornecido' });
+    }
+
+    const response = await fetch(`${config.newsBackendUrl}/api/auth/password`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': authHeader 
+      },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao atualizar senha:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+// ==================== STATUS ====================
+
 /**
  * GET /api/status
  * Status do gateway e backend

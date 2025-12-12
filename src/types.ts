@@ -1,4 +1,38 @@
 /**
+ * Usuário autenticado
+ */
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  created_at: string;
+}
+
+/**
+ * Resposta de autenticação
+ */
+export interface AuthResponse {
+  success: boolean;
+  data?: {
+    user: User;
+    token: string;
+  };
+  error?: string;
+  code?: string;
+}
+
+/**
+ * Payload do token JWT decodificado
+ */
+export interface JWTPayload {
+  id: number;
+  email: string;
+  name: string;
+  iat: number;
+  exp: number;
+}
+
+/**
  * Categoria de notícia
  */
 export interface Category {

@@ -21,26 +21,186 @@ Content-Type: application/json
 
 ## Índice
 
-1. [Usuários (Registro)](#usuários-registro)
-2. [Feeds](#feeds)
-3. [Artigos](#artigos)
-4. [Interações](#interações)
-5. [Sessões](#sessões)
-6. [Bookmarks](#bookmarks)
-7. [Perfil do Usuário](#perfil-do-usuário)
-8. [Categorias](#categorias)
+1. [Autenticação JWT](#autenticação-jwt)
+2. [Usuários](#usuários)
+3. [Feeds](#feeds)
+4. [Artigos](#artigos)
+5. [Interações](#interações)
+6. [Sessões](#sessões)
+7. [Bookmarks](#bookmarks)
+8. [Perfil do Usuário](#perfil-do-usuário)
+9. [Categorias](#categorias)
 
 ---
 
-## Usuários (Registro)
+## Autenticação JWT
 
-> ⚠️ **Nota**: Atualmente o sistema usa um modelo simplificado sem autenticação JWT. 
-> O usuário é identificado apenas por email. Para um MVP, isso é suficiente.
-> Autenticação completa pode ser adicionada futuramente.
+O sistema utiliza autenticação via JWT (JSON Web Tokens). Após login/registro, o token deve ser enviado em todas as requisições autenticadas.
+
+### Header de Autenticação
+
+```http
+Authorization: Bearer <token>
+```
+
+---
+
+### POST /api/auth/register
+
+Registra um novo usuário.
+
+**Request:**
+```json
+{
+  "email": "usuario@email.com",
+  "password": "senhaSegura123",
+  "name": "João Silva"
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": 123,
+      "email": "usuario@email.com",
+      "name": "João Silva",
+      "created_at": "2025-12-11T22:00:00.000Z"
+    },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+
+**Erros:**
+| Código | Descrição |
+|--------|-----------|
+| 400 | Email ou senha faltando / Senha muito curta (< 6 caracteres) |
+| 400 | Email já cadastrado |
+
+---
+
+### POST /api/auth/login
+
+Autentica um usuário existente.
+
+**Request:**
+```json
+{
+  "email": "usuario@email.com",
+  "password": "senhaSegura123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": 123,
+      "email": "usuario@email.com",
+      "name": "João Silva",
+      "created_at": "2025-12-11T22:00:00.000Z"
+    },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+
+**Erros:**
+| Código | Descrição |
+|--------|-----------|
+| 400 | Email ou senha faltando |
+| 401 | Email ou senha incorretos |
+
+---
+
+### GET /api/auth/me
+
+Retorna dados do usuário autenticado.
+
+**Headers:**
+```http
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "email": "usuario@email.com",
+    "name": "João Silva",
+    "created_at": "2025-12-11T22:00:00.000Z"
+  }
+}
+```
+
+---
+
+### POST /api/auth/refresh
+
+Renova o token JWT.
+
+**Headers:**
+```http
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+
+---
+
+### PUT /api/auth/password
+
+Atualiza a senha do usuário autenticado.
+
+**Headers:**
+```http
+Authorization: Bearer <token>
+```
+
+**Request:**
+```json
+{
+  "currentPassword": "senhaAntiga123",
+  "newPassword": "senhaNova456"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Senha atualizada com sucesso"
+}
+```
+
+**Erros:**
+| Código | Descrição |
+|--------|-----------|
+| 400 | Campos faltando / Nova senha muito curta |
+| 401 | Senha atual incorreta |
+
+---
+
+## Usuários
 
 ### POST /api/users
 
-Cria ou busca usuário por email.
+Cria ou busca usuário por email (endpoint legado, sem autenticação).
 
 **Request:**
 ```json

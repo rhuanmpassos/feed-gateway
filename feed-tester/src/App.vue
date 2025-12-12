@@ -23,10 +23,11 @@ const filters = ref({
 const categories = ref([])
 const ws = ref(null)
 
-// User state
+// Auth state (JWT)
+const authToken = ref(localStorage.getItem('auth_token') || null)
 const currentUserId = ref(localStorage.getItem('test_user_id') || null)
-const userName = ref('')
-const userEmail = ref('')
+const currentUserName = ref(localStorage.getItem('user_name') || '')
+const currentUserEmail = ref(localStorage.getItem('user_email') || '')
 const showOnboardingModal = ref(false)
 const authError = ref('')
 const selectedOnboardingCategories = ref([])
@@ -44,6 +45,15 @@ const interactionQueue = ref([])
 const interactionInterval = ref(null)
 const statsRefreshInterval = ref(null)
 const viewStartTimes = ref(new Map()) // track view duration
+
+// Helper para headers de autenticação
+function getAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  if (authToken.value) {
+    headers['Authorization'] = `Bearer ${authToken.value}`
+  }
+  return headers
+}
 
 // Computed
 const displayItems = computed(() => {
@@ -70,6 +80,8 @@ const stats = computed(() => ({
   forYou: forYouItems.value.length,
 }))
 
+const isLoggedIn = computed(() => !!authToken.value && !!currentUserId.value)
+
 // ========== LOGGING ==========
 function addLog(type, message, data = null) {
   logs.value.unshift({
@@ -82,46 +94,92 @@ function addLog(type, message, data = null) {
   if (logs.value.length > 100) logs.value.pop()
 }
 
-// ========== USER MANAGEMENT ==========
-async function createUser() {
-  if (!userName.value || !userEmail.value) {
-    addLog('error', 'Nome e email são obrigatórios')
-    return
-  }
-
+// ========== JWT AUTH ==========
+async function handleLogin({ email, password }) {
+  authError.value = ''
   try {
-    const res = await fetch(`${GATEWAY_URL}/api/users`, {
+    addLog('info', 'Fazendo login...')
+    const res = await fetch(`${GATEWAY_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: userName.value, email: userEmail.value })
+      body: JSON.stringify({ email, password })
     })
     const data = await res.json()
     
-    if (data.success || data.id) {
-      const userId = data.data?.id || data.id
-      const isNew = data.data?.is_new || false
-      const preferences = data.data?.preferences || []
+    if (data.success && data.data?.token) {
+      const { token, user } = data.data
       
-      // Se usuário é novo (sem preferências), mostra onboarding
-      if (isNew || preferences.length === 0) {
-        pendingUserId.value = userId
+      // Salva token e dados do usuário
+      authToken.value = token
+      currentUserId.value = user.id
+      currentUserName.value = user.name
+      currentUserEmail.value = user.email
+      
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('test_user_id', user.id)
+      localStorage.setItem('user_name', user.name)
+      localStorage.setItem('user_email', user.email)
+      
+      addLog('success', `🔐 Login com sucesso! Bem-vindo, ${user.name}`)
+      
+      // Verifica preferências para onboarding
+      const prefs = user.preferences || []
+      if (prefs.length === 0) {
+        pendingUserId.value = user.id
         selectedOnboardingCategories.value = []
-        onboardingError.value = ''
-        onboardingLoading.value = false
         showOnboardingModal.value = true
-        addLog('info', `Usuário ${userId} criado - iniciando onboarding`)
+        addLog('info', 'Configure suas preferências para personalizar o feed')
       } else {
-        // Usuário existente com preferências
-        currentUserId.value = userId
-        localStorage.setItem('test_user_id', userId)
-        addLog('success', `Usuário selecionado: ID ${userId}`)
         await loadUserData()
       }
     } else {
-      addLog('error', 'Erro ao criar usuário', data)
+      authError.value = data.error || 'Email ou senha incorretos'
+      addLog('error', 'Falha no login', data.error)
     }
   } catch (e) {
-    addLog('error', 'Erro ao criar usuário', e.message)
+    authError.value = 'Erro de conexão. Tente novamente.'
+    addLog('error', 'Erro ao fazer login', e.message)
+  }
+}
+
+async function handleRegister({ name, email, password }) {
+  authError.value = ''
+  try {
+    addLog('info', 'Criando conta...')
+    const res = await fetch(`${GATEWAY_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    })
+    const data = await res.json()
+    
+    if (data.success && data.data?.token) {
+      const { token, user } = data.data
+      
+      // Salva token e dados do usuário
+      authToken.value = token
+      currentUserId.value = user.id
+      currentUserName.value = user.name
+      currentUserEmail.value = user.email
+      
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('test_user_id', user.id)
+      localStorage.setItem('user_name', user.name)
+      localStorage.setItem('user_email', user.email)
+      
+      addLog('success', `✨ Conta criada com sucesso! Bem-vindo, ${user.name}`)
+      
+      // Novo usuário - mostra onboarding
+      pendingUserId.value = user.id
+      selectedOnboardingCategories.value = []
+      showOnboardingModal.value = true
+    } else {
+      authError.value = data.error || 'Erro ao criar conta. Tente novamente.'
+      addLog('error', 'Falha no registro', data.error)
+    }
+  } catch (e) {
+    authError.value = 'Erro de conexão. Tente novamente.'
+    addLog('error', 'Erro ao criar conta', e.message)
   }
 }
 
@@ -133,9 +191,9 @@ async function saveOnboardingPreferences() {
     return
   }
 
-  if (!pendingUserId.value) {
+  if (!pendingUserId.value && !currentUserId.value) {
     onboardingError.value = 'Erro: ID do usuário não encontrado. Tente criar a conta novamente.'
-    addLog('error', 'pendingUserId é null')
+    addLog('error', 'userId é null')
     return
   }
 
@@ -143,7 +201,7 @@ async function saveOnboardingPreferences() {
   onboardingError.value = ''
   
   const categoriesToSave = [...selectedOnboardingCategories.value]
-  const userId = pendingUserId.value
+  const userId = pendingUserId.value || currentUserId.value
 
   try {
     console.log('Salvando preferências para usuário:', userId)
@@ -151,7 +209,7 @@ async function saveOnboardingPreferences() {
     
     const res = await fetch(`${GATEWAY_URL}/api/users/${userId}/preferences`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ categories: categoriesToSave })
     })
     
@@ -169,8 +227,6 @@ async function saveOnboardingPreferences() {
     console.log('Response data:', data)
     
     if (data.success) {
-      currentUserId.value = userId
-      localStorage.setItem('test_user_id', userId)
       showOnboardingModal.value = false
       pendingUserId.value = null
       selectedOnboardingCategories.value = []
@@ -203,8 +259,6 @@ function toggleOnboardingCategory(categoryId) {
 
 // Pular onboarding (usar feed cronológico)
 function skipOnboarding() {
-  currentUserId.value = pendingUserId.value
-  localStorage.setItem('test_user_id', pendingUserId.value)
   showOnboardingModal.value = false
   pendingUserId.value = null
   addLog('info', 'Onboarding pulado - usando feed cronológico')
@@ -216,7 +270,9 @@ async function loadUserData() {
 
   try {
     // Carrega preferências
-    const prefsRes = await fetch(`${GATEWAY_URL}/api/users/${currentUserId.value}/preferences`)
+    const prefsRes = await fetch(`${GATEWAY_URL}/api/users/${currentUserId.value}/preferences`, {
+      headers: getAuthHeaders()
+    })
     const prefsData = await prefsRes.json()
     if (prefsData.success) {
       userPreferences.value = prefsData.data || []
@@ -224,7 +280,9 @@ async function loadUserData() {
     }
 
     // Carrega stats
-    const statsRes = await fetch(`${GATEWAY_URL}/api/interactions/user/${currentUserId.value}/stats`)
+    const statsRes = await fetch(`${GATEWAY_URL}/api/interactions/user/${currentUserId.value}/stats`, {
+      headers: getAuthHeaders()
+    })
     const statsData = await statsRes.json()
     if (statsData.success) {
       userStats.value = statsData.data
@@ -236,69 +294,23 @@ async function loadUserData() {
 }
 
 function clearUser() {
+  // Limpa todo o estado de autenticação
+  authToken.value = null
   currentUserId.value = null
+  currentUserName.value = ''
+  currentUserEmail.value = ''
+  
+  localStorage.removeItem('auth_token')
   localStorage.removeItem('test_user_id')
+  localStorage.removeItem('user_name')
+  localStorage.removeItem('user_email')
+  
   userPreferences.value = []
   userStats.value = null
   forYouItems.value = []
   feedMode.value = 'chronological'
-  addLog('info', 'Usuário deslogado')
-}
-
-// Login from AuthScreen (only email) - usa o mesmo endpoint POST
-async function handleLogin({ email }) {
-  authError.value = ''
-  try {
-    addLog('info', 'Buscando usuário...')
-    const res = await fetch(`${GATEWAY_URL}/api/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: '', email: email })
-    })
-    const data = await res.json()
-    
-    if (data.success || data.id) {
-      const userId = data.data?.id || data.id
-      const isNew = data.data?.is_new || false
-      const preferences = data.data?.preferences || []
-      
-      if (isNew) {
-        // Usuário não existe, precisa criar conta
-        authError.value = 'Usuário não encontrado. Crie uma conta primeiro.'
-        addLog('error', 'Usuário não encontrado. Crie uma conta primeiro.')
-        return
-      }
-      
-      // Usuário existente
-      if (preferences.length === 0) {
-        // Usuário existe mas sem preferências - mostrar onboarding
-        pendingUserId.value = userId
-        selectedOnboardingCategories.value = []
-        showOnboardingModal.value = true
-        addLog('info', `Bem-vindo de volta! Configure suas preferências.`)
-      } else {
-        // Usuário existente com preferências
-        currentUserId.value = userId
-        localStorage.setItem('test_user_id', userId)
-        addLog('success', `Bem-vindo de volta! ID ${userId}`)
-        await loadUserData()
-      }
-    } else {
-      authError.value = 'Erro ao fazer login. Tente novamente.'
-      addLog('error', 'Erro ao fazer login', data)
-    }
-  } catch (e) {
-    authError.value = 'Erro de conexão. Tente novamente.'
-    addLog('error', 'Erro ao fazer login', e.message)
-  }
-}
-
-// Register from AuthScreen (name + email)
-async function handleRegister({ name, email }) {
-  authError.value = ''
-  userName.value = name
-  userEmail.value = email
-  await createUser()
+  
+  addLog('info', '👋 Logout realizado com sucesso')
 }
 
 // ========== INTERACTION TRACKING ==========
@@ -364,7 +376,7 @@ async function sendInteractions() {
   try {
     const res = await fetch(`${GATEWAY_URL}/api/interactions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         user_id: parseInt(currentUserId.value),
         interactions
@@ -393,14 +405,18 @@ async function refreshUserStats() {
 
   try {
     // Atualiza preferências
-    const prefsRes = await fetch(`${GATEWAY_URL}/api/users/${currentUserId.value}/preferences`)
+    const prefsRes = await fetch(`${GATEWAY_URL}/api/users/${currentUserId.value}/preferences`, {
+      headers: getAuthHeaders()
+    })
     const prefsData = await prefsRes.json()
     if (prefsData.success) {
       userPreferences.value = prefsData.data || []
     }
 
     // Atualiza stats
-    const statsRes = await fetch(`${GATEWAY_URL}/api/interactions/user/${currentUserId.value}/stats`)
+    const statsRes = await fetch(`${GATEWAY_URL}/api/interactions/user/${currentUserId.value}/stats`, {
+      headers: getAuthHeaders()
+    })
     const statsData = await statsRes.json()
     if (statsData.success) {
       userStats.value = statsData.data
@@ -413,13 +429,15 @@ async function refreshUserStats() {
 // ========== FOR YOU FEED ==========
 async function loadForYouFeed() {
   if (!currentUserId.value) {
-    addLog('warning', 'Selecione um usuário para ver o feed For You')
+    addLog('warning', 'Faça login para ver o feed For You')
     return
   }
 
   try {
     addLog('info', '🎯 Carregando feed For You...')
-    const res = await fetch(`${GATEWAY_URL}/api/feeds/for-you?user_id=${currentUserId.value}&limit=50`)
+    const res = await fetch(`${GATEWAY_URL}/api/feeds/for-you?user_id=${currentUserId.value}&limit=50`, {
+      headers: getAuthHeaders()
+    })
     const data = await res.json()
     
     if (data.success || Array.isArray(data)) {
@@ -575,7 +593,7 @@ onMounted(() => {
   connect()
   
   // Load user data if exists
-  if (currentUserId.value) {
+  if (isLoggedIn.value) {
     loadUserData()
   }
   
@@ -601,7 +619,7 @@ onUnmounted(() => {
 <template>
   <!-- Auth Screen - shown when not logged in -->
   <AuthScreen 
-    v-if="!currentUserId" 
+    v-if="!isLoggedIn" 
     :error="authError"
     @login="handleLogin" 
     @register="handleRegister" 
@@ -624,14 +642,28 @@ onUnmounted(() => {
       <div class="max-w-7xl mx-auto px-4 py-2">
         <div class="glass-card rounded-xl p-3 flex items-center justify-between">
           <div class="flex items-center gap-4">
-            <span class="text-white/50 text-sm">Usuário:</span>
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-medium">
+                {{ currentUserName.charAt(0).toUpperCase() }}
+              </div>
+              <div>
+                <p class="text-white text-sm font-medium">{{ currentUserName }}</p>
+                <p class="text-white/40 text-xs">{{ currentUserEmail }}</p>
+              </div>
+            </div>
             <div class="flex items-center gap-2">
-              <span class="px-3 py-1 rounded-lg bg-green-500/20 text-green-300 text-sm font-medium">
-                ID: {{ currentUserId }}
+              <span class="px-2 py-1 rounded-lg bg-green-500/20 text-green-300 text-xs font-medium flex items-center gap-1">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                Autenticado
               </span>
-              <button @click="loadUserData" class="text-xs text-white/50 hover:text-white" title="Atualizar dados">🔄</button>
+              <button @click="loadUserData" class="text-xs text-white/50 hover:text-white p-1" title="Atualizar dados">🔄</button>
               <button @click="clearUser" class="px-2 py-1 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs flex items-center gap-1">
-                <span>Sair</span>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sair
               </button>
             </div>
           </div>
@@ -651,13 +683,11 @@ onUnmounted(() => {
             </button>
             <button 
               @click="feedMode = 'for-you'"
-              :disabled="!currentUserId"
               :class="[
                 'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
                 feedMode === 'for-you' 
                   ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' 
-                  : 'bg-white/5 text-white/50 hover:bg-white/10',
-                !currentUserId && 'opacity-50 cursor-not-allowed'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'
               ]"
             >
               🎯 For You
@@ -735,7 +765,7 @@ onUnmounted(() => {
           <!-- Sidebar -->
           <div class="lg:col-span-1 space-y-4">
             <!-- User Stats -->
-            <div v-if="currentUserId && userStats" class="glass-card rounded-xl p-4">
+            <div v-if="userStats" class="glass-card rounded-xl p-4">
               <h3 class="text-sm font-medium text-white/70 mb-3">📊 Suas Estatísticas</h3>
               
               <div class="space-y-3">
