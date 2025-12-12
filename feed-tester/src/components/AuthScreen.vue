@@ -14,6 +14,7 @@ const mode = ref('login') // 'login' | 'register'
 const name = ref('')
 const email = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const isLoading = ref(false)
 const localError = ref('')
 const showPassword = ref(false)
@@ -51,6 +52,11 @@ async function handleSubmit() {
   
   if (mode.value === 'register' && !name.value) {
     localError.value = 'Digite seu nome'
+    return
+  }
+  
+  if (mode.value === 'register' && password.value !== confirmPassword.value) {
+    localError.value = 'As senhas não coincidem'
     return
   }
   
@@ -179,6 +185,19 @@ async function handleSubmit() {
               </div>
               <p v-if="mode === 'register'" class="text-xs text-white/30 mt-1">Mínimo 6 caracteres</p>
             </div>
+            
+            <!-- Confirm Password field (register only) -->
+            <Transition name="slide-fade">
+              <div v-if="mode === 'register'">
+                <label class="block text-sm text-white/70 mb-2 font-medium">Confirmar Senha</label>
+                <input 
+                  v-model="confirmPassword"
+                  type="password"
+                  class="input-field"
+                  placeholder="••••••••"
+                />
+              </div>
+            </Transition>
             
             <!-- Error message -->
             <Transition name="fade">
