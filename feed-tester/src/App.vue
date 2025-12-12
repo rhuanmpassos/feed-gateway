@@ -46,13 +46,8 @@ const sessionStartTime = ref(null)
 const likedItems = ref(new Set())
 const bookmarkedItems = ref(new Set())
 
-// Feed mode: 'chronological' | 'for-you' | 'intelligent'
+// Feed mode: 'chronological' | 'for-you'
 const feedMode = ref('chronological')
-
-// Intelligent feed (hierarchical)
-const intelligentItems = ref([])
-const hierarchicalPreferences = ref({ flat: [], hierarchical: { level1: [], level2: [], level3: [] } })
-const feedConfig = ref(null)
 
 // Interaction tracking
 const interactionQueue = ref([])
@@ -80,10 +75,6 @@ const displayItems = computed(() => {
     return forYouItems.value
   }
   
-  if (feedMode.value === 'intelligent') {
-    return intelligentItems.value
-  }
-  
   let items = [...feedItems.value]
   
   if (filters.value.categories.length > 0) {
@@ -101,7 +92,6 @@ const stats = computed(() => ({
   total: feedItems.value.length,
   news: feedItems.value.length,
   forYou: forYouItems.value.length,
-  intelligent: intelligentItems.value.length,
   breaking: breakingNews.value.length,
 }))
 
@@ -380,9 +370,6 @@ function clearUser() {
   userProfile.value = null
   userPatterns.value = null
   forYouItems.value = []
-  intelligentItems.value = []
-  hierarchicalPreferences.value = { flat: [], hierarchical: { level1: [], level2: [], level3: [] } }
-  feedConfig.value = null
   likedItems.value = new Set()
   bookmarkedItems.value = new Set()
   feedMode.value = 'chronological'
@@ -647,87 +634,6 @@ async function loadForYouFeed() {
   }
 }
 
-async function loadIntelligentFeed() {
-  if (!currentUserId.value) return
-
-  try {
-    addLog('info', '🧠 Carregando feed Inteligente...')
-    const res = await fetch(`${GATEWAY_URL}/api/feeds/intelligent?user_id=${currentUserId.value}&limit=50`, { headers: getAuthHeaders() })
-    const data = await res.json()
-    
-    if (data.success || Array.isArray(data)) {
-      const items = data.data || data
-      intelligentItems.value = items.map(article => ({
-        id: `news_${article.id}`,
-        source: 'news',
-        type: 'article',
-        title: article.title,
-        summary: article.summary,
-        imageUrl: article.image_url,
-        url: article.url,
-        siteName: article.site_name,
-        category: article.category_name ? { id: article.category_id, name: article.category_name, slug: article.category_slug } : null,
-        categoryPath: article.category_path,
-        publishedAt: article.published_at,
-        score: article.score,
-        explanation: article.explanation,
-        isExploration: article.is_exploration,
-        feedType: article.feed_type,
-        matchPercentage: article.match_percentage
-      }))
-      
-      // Salva configuração do feed
-      if (data.config) {
-        feedConfig.value = data.config
-      }
-      
-      addLog('success', `🧠 Inteligente: ${intelligentItems.value.length} artigos (${Math.round(data.config?.EXPLOITATION_RATIO * 100 || 80)}% exploitation)`)
-      impressionsSent.value.clear()
-      observeFeedCards()
-    }
-  } catch (e) {
-    addLog('error', 'Erro ao carregar feed inteligente', e.message)
-  }
-}
-
-async function loadHierarchicalPreferences() {
-  if (!currentUserId.value) return
-
-  try {
-    const res = await fetch(`${GATEWAY_URL}/api/feeds/preferences/${currentUserId.value}`, { headers: getAuthHeaders() })
-    const data = await res.json()
-    
-    if (data.success) {
-      hierarchicalPreferences.value = data.data
-      addLog('success', `📊 Preferências hierárquicas: ${data.data.flat?.length || 0} categorias`)
-    }
-  } catch (e) {
-    addLog('error', 'Erro ao carregar preferências hierárquicas', e.message)
-  }
-}
-
-async function recalculatePreferences() {
-  if (!currentUserId.value) return
-
-  try {
-    addLog('info', '🔄 Recalculando preferências...')
-    const res = await fetch(`${GATEWAY_URL}/api/feeds/preferences/${currentUserId.value}/recalculate`, { 
-      method: 'POST',
-      headers: getAuthHeaders() 
-    })
-    const data = await res.json()
-    
-    if (data.success) {
-      addLog('success', `✅ ${data.message}`)
-      // Recarrega preferências
-      await loadHierarchicalPreferences()
-      await loadUserData()
-    }
-  } catch (e) {
-    addLog('error', 'Erro ao recalcular preferências', e.message)
-  }
-}
-
 async function loadBreakingNews() {
   try {
     const res = await fetch(`${GATEWAY_URL}/api/feeds/breaking?limit=5`, { headers: getAuthHeaders() })
@@ -854,9 +760,6 @@ watch(feedMode, (newMode) => {
   impressionsSent.value.clear()
   if (newMode === 'for-you') {
     loadForYouFeed()
-  } else if (newMode === 'intelligent') {
-    loadIntelligentFeed()
-    loadHierarchicalPreferences()
   } else {
     observeFeedCards()
   }
@@ -946,10 +849,6 @@ onUnmounted(() => {
               @click="feedMode = 'for-you'"
               :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', feedMode === 'for-you' ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' : 'bg-white/5 text-white/50 hover:bg-white/10']"
             >🔥 For You</button>
-            <button 
-              @click="feedMode = 'intelligent'; loadIntelligentFeed(); loadHierarchicalPreferences()"
-              :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', feedMode === 'intelligent' ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50' : 'bg-white/5 text-white/50 hover:bg-white/10']"
-            >🧠 Inteligente</button>
           </div>
         </div>
       </div>
@@ -978,48 +877,14 @@ onUnmounted(() => {
             </div>
             
             <div v-if="feedMode === 'for-you' && userPreferences.length > 0" class="glass-card rounded-xl p-4">
-              <h3 class="text-sm font-medium text-white/70 mb-2">🎯 Preferências</h3>
+              <h3 class="text-sm font-medium text-white/70 mb-2">🎯 Suas Preferências (80% do feed)</h3>
               <div class="flex flex-wrap gap-2">
                 <span v-for="pref in userPreferences.slice(0, 8)" :key="pref.category_id" class="px-2 py-1 rounded-lg text-xs" :style="{ backgroundColor: `rgba(147, 51, 234, ${pref.preference_score * 0.5})` }">
                   {{ pref.category_name }}: {{ (pref.preference_score * 100).toFixed(0) }}%
                 </span>
               </div>
-            </div>
-            
-            <!-- Preferências Hierárquicas (Feed Inteligente) -->
-            <div v-if="feedMode === 'intelligent'" class="glass-card rounded-xl p-4 space-y-3">
-              <div class="flex items-center justify-between">
-                <h3 class="text-sm font-medium text-white/70">🧠 Preferências Hierárquicas (Scores Relativos)</h3>
-                <button @click="recalculatePreferences" class="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30">
-                  🔄 Recalcular
-                </button>
-              </div>
-              
-              <!-- Config do Feed -->
-              <div v-if="feedConfig" class="text-xs text-white/50 flex gap-4">
-                <span>📊 {{ Math.round(feedConfig.EXPLOITATION_RATIO * 100) }}% Exploitation</span>
-                <span>🔍 {{ Math.round(feedConfig.EXPLORATION_RATIO * 100) }}% Exploration</span>
-              </div>
-              
-              <!-- Scores por nível -->
-              <div v-if="hierarchicalPreferences.flat?.length > 0" class="space-y-2">
-                <div class="flex flex-wrap gap-2">
-                  <span 
-                    v-for="pref in hierarchicalPreferences.flat.slice(0, 10)" 
-                    :key="pref.category_id" 
-                    class="px-2 py-1 rounded-lg text-xs flex items-center gap-1"
-                    :style="{ backgroundColor: `rgba(16, 185, 129, ${pref.preference_score * 0.8})` }"
-                  >
-                    <span v-if="pref.category_level === 3">🎯</span>
-                    <span v-else-if="pref.category_level === 2">📂</span>
-                    <span v-else>📁</span>
-                    {{ pref.category_name }}: {{ (pref.preference_score * 100).toFixed(1) }}%
-                  </span>
-                </div>
-                <div class="text-xs text-white/40">
-                  Total: {{ hierarchicalPreferences.flat.length }} categorias | 
-                  Soma: {{ hierarchicalPreferences.flat.reduce((s, p) => s + p.preference_score, 0).toFixed(2) }}
-                </div>
+              <div class="mt-2 text-xs text-white/40">
+                20% do feed = descoberta de novos interesses 🔍
               </div>
             </div>
             
