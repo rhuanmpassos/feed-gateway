@@ -622,7 +622,11 @@ async function sendInteractions() {
     
     if (data.success) {
       addLog('success', `✅ ${interactions.length} interações enviadas`)
-      refreshUserStats()
+      // CORRIGIDO: Aguarda 1.5s antes de buscar preferências atualizadas
+      // Isso dá tempo para o backend processar e atualizar user_hierarchical_preferences
+      setTimeout(() => {
+        refreshUserStats()
+      }, 1500)
     } else {
       // Se o usuário não existe mais, força logout
       if (isUserNotFoundError(data)) {

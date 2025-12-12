@@ -105,3 +105,4 @@ O gateway está **CORRETO** em relação ao backend. Os erros eram:
 1. ✅ **Formato de resposta** - Corrigido (data vs array)
 2. ⚠️ **user_id inválido** - Problema no APP, não no gateway
 
+
