@@ -4,7 +4,8 @@ import { computed } from 'vue'
 const props = defineProps({
   item: Object,
   liked: Boolean,
-  bookmarked: Boolean
+  bookmarked: Boolean,
+  showScore: Boolean // Mostra score e explanation no modo For You
 })
 
 const emit = defineEmits(['like', 'bookmark', 'share'])
@@ -15,6 +16,28 @@ const categoryName = computed(() => {
     return props.item.category.name
   }
   return props.item.category
+})
+
+// Score de relevância (0-1)
+const relevanceScore = computed(() => {
+  return props.item.score || props.item.matchPercentage || null
+})
+
+// Explicação de por que o artigo aparece (exploration vs exploitation)
+const explanation = computed(() => {
+  if (props.item.display?.explanation) return props.item.display.explanation
+  if (props.item.explanation) return props.item.explanation
+  return null
+})
+
+// É artigo de descoberta?
+const isExploration = computed(() => {
+  return props.item.isExploration || props.item.is_exploration || props.item.feedType === 'exploration'
+})
+
+// Tipo do feed (breaking, exploitation, exploration, etc)
+const feedType = computed(() => {
+  return props.item.feedType || props.item.feed_type || null
 })
 
 const formattedDate = computed(() => {
@@ -95,6 +118,16 @@ function handleAction(action, event) {
         <div v-else-if="isRecent" class="absolute top-2 right-2 px-2 py-1 rounded-lg text-xs font-medium bg-green-500/90 text-white">
           NOVO
         </div>
+        
+        <!-- Exploration Badge (descoberta) -->
+        <div v-if="isExploration && showScore" class="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-xs font-medium bg-purple-500/90 text-white flex items-center gap-1">
+          🔍 Descoberta
+        </div>
+        
+        <!-- Score Badge -->
+        <div v-if="showScore && relevanceScore && !isExploration" class="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-xs font-medium bg-emerald-500/80 text-white">
+          {{ (relevanceScore * 100).toFixed(0) }}% match
+        </div>
       </div>
       
       <!-- Content -->
@@ -102,9 +135,13 @@ function handleAction(action, event) {
         <div class="flex items-start justify-between gap-4">
           <div class="flex-1 min-w-0">
             <!-- Category + Time -->
-            <div class="flex items-center gap-2 mb-2">
+            <div class="flex items-center gap-2 mb-2 flex-wrap">
               <span v-if="categoryName" class="badge">{{ categoryName }}</span>
               <span v-if="timeAgo && timeAgo !== 'AGORA'" class="text-xs text-white/40">{{ timeAgo }}</span>
+              <!-- Explanation (por que este artigo aparece) -->
+              <span v-if="showScore && explanation" class="text-xs text-purple-300/70 italic">
+                {{ explanation }}
+              </span>
             </div>
             
             <!-- Title -->

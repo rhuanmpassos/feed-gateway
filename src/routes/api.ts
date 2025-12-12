@@ -325,7 +325,10 @@ router.get('/bookmarks', async (req: Request, res: Response) => {
     try {
       const newsResponse = await fetch(`${config.newsBackendUrl}/api/articles/bookmarked`);
       if (newsResponse.ok) {
-        const newsData = await newsResponse.json() as any[];
+        // CORRIGIDO: Backend retorna { success: true, data: [...] }, não apenas array
+        const response = await newsResponse.json() as { success: boolean; data?: any[]; count?: number };
+        const newsData = response.data || [];
+        
         for (const article of newsData) {
           results.push({
             id: `news_${article.id}`,
@@ -403,7 +406,17 @@ router.post('/interactions', async (req: Request, res: Response) => {
       });
 
       if (!response.ok) {
-        console.error('Erro ao enviar interações para backend:', await response.text());
+        const errorText = await response.text();
+        console.error('Erro ao enviar interações para backend:', errorText);
+        
+        // CORRIGIDO: Retorna erro mais específico para o cliente
+        if (errorText.includes('user_interactions_user_id_fkey')) {
+          return res.status(400).json({ 
+            success: false, 
+            error: 'Usuário não encontrado. Certifique-se de que o usuário está registrado antes de enviar interações.',
+            details: 'O user_id enviado não existe no banco de dados'
+          });
+        }
       }
     }
 
