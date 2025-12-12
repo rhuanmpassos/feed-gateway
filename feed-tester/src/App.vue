@@ -521,13 +521,20 @@ function handleMessage(message) {
       break
       
     case 'new_item':
-      feedItems.value.unshift(message.data)
-      addLog('success', `Novo item: ${message.data.title.slice(0, 40)}...`, message.data)
+      // Verifica se item já existe para evitar duplicação
+      const newItem = message.data
+      const exists = feedItems.value.some(item => item.id === newItem.id)
+      if (!exists) {
+        feedItems.value.unshift(newItem)
+        addLog('success', `Novo item: ${newItem.title.slice(0, 40)}...`, newItem)
+      }
       break
       
     case 'history':
-      feedItems.value = message.data
-      addLog('info', `Histórico carregado: ${message.data.length} itens`)
+      // Remove duplicatas do histórico usando Map para manter ordem
+      const uniqueItems = [...new Map(message.data.map(item => [item.id, item])).values()]
+      feedItems.value = uniqueItems
+      addLog('info', `Histórico carregado: ${uniqueItems.length} itens`)
       break
       
     case 'backend_status':
