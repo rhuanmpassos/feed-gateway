@@ -3,7 +3,7 @@ import { feedStore } from '../services/feed-store';
 import { newsClient } from '../clients/news-client';
 import { wsBroadcaster } from '../services/ws-broadcaster';
 import config from '../config';
-import { Interaction } from '../types';
+import { Interaction, InteractionBatch } from '../types';
 
 const router = Router();
 
@@ -158,9 +158,10 @@ router.get('/bookmarks', async (req: Request, res: Response) => {
 /**
  * POST /api/interactions
  * Recebe batch de interações do app e encaminha para o backend
+ * ATUALIZADO: Suporta novos campos de aprendizado
  */
 router.post('/interactions', async (req: Request, res: Response) => {
-  const { user_id, interactions } = req.body;
+  const { user_id, session_id, device_type, interactions } = req.body as InteractionBatch;
 
   if (!user_id || !interactions || !Array.isArray(interactions)) {
     return res.status(400).json({ error: 'user_id e interactions são obrigatórios' });
@@ -171,8 +172,14 @@ router.post('/interactions', async (req: Request, res: Response) => {
     const newsInteractions = interactions
       .filter((i: Interaction) => i.article_id?.startsWith('news_'))
       .map((i: Interaction) => ({
-        ...i,
-        article_id: parseInt(i.article_id.replace('news_', ''), 10)
+        article_id: parseInt(i.article_id.replace('news_', ''), 10),
+        interaction_type: i.interaction_type,
+        duration: i.duration,
+        position: i.position,
+        scroll_velocity: i.scroll_velocity,
+        screen_position: i.screen_position,
+        viewport_time: i.viewport_time,
+        timestamp: i.timestamp
       }));
 
     // Envia para backend de notícias
@@ -182,6 +189,8 @@ router.post('/interactions', async (req: Request, res: Response) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id,
+          session_id,
+          device_type,
           interactions: newsInteractions
         })
       });
@@ -348,6 +357,210 @@ router.get('/interactions/user/:userId/stats', async (req: Request, res: Respons
   } catch (error) {
     console.error('Erro ao buscar estatísticas:', error);
     return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+// ==================== SESSÕES ====================
+
+/**
+ * POST /api/sessions
+ * Inicia nova sessão do usuário
+ */
+router.post('/sessions', async (req: Request, res: Response) => {
+  try {
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao criar sessão:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * PUT /api/sessions/:sessionId/end
+ * Finaliza uma sessão
+ */
+router.put('/sessions/:sessionId/end', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/sessions/${sessionId}/end`, {
+      method: 'PUT'
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao finalizar sessão:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/sessions/user/:userId
+ * Lista sessões de um usuário
+ */
+router.get('/sessions/user/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/sessions/user/${userId}`);
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar sessões:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+// ==================== PERFIL DO USUÁRIO ====================
+
+/**
+ * GET /api/users/:userId/profile
+ * Retorna perfil do usuário (para personalização)
+ */
+router.get('/users/:userId/profile', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/users/${userId}/profile`);
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar perfil:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/users/:userId/patterns
+ * Retorna análise de padrões de comportamento
+ */
+router.get('/users/:userId/patterns', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const response = await fetch(`${config.newsBackendUrl}/api/interactions/users/${userId}/patterns`);
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar padrões:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao comunicar com backend' });
+  }
+});
+
+// ==================== FEED VICIANTE ====================
+
+/**
+ * GET /api/feeds/addictive
+ * Feed otimizado para engajamento máximo
+ * Query: user_id, limit, offset
+ */
+router.get('/feeds/addictive', async (req: Request, res: Response) => {
+  try {
+    const { user_id, limit = 50, offset = 0 } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' });
+    }
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/addictive?user_id=${user_id}&limit=${limit}&offset=${offset}`
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar feed' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/feeds/addictive/more
+ * Mais conteúdo para scroll infinito
+ */
+router.get('/feeds/addictive/more', async (req: Request, res: Response) => {
+  try {
+    const { user_id, offset = 0, limit = 30 } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' });
+    }
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/addictive/more?user_id=${user_id}&offset=${offset}&limit=${limit}`
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar mais conteúdo' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/feeds/breaking
+ * Notícias das últimas 2 horas
+ */
+router.get('/feeds/breaking', async (req: Request, res: Response) => {
+  try {
+    const { limit = 10 } = req.query;
+    
+    const response = await fetch(`${config.newsBackendUrl}/feeds/breaking?limit=${limit}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar breaking news' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/feeds/predict
+ * Predição de clique para um artigo
+ * Query: user_id, article_id
+ */
+router.get('/feeds/predict', async (req: Request, res: Response) => {
+  try {
+    let { user_id, article_id } = req.query;
+    
+    if (!user_id || !article_id) {
+      return res.status(400).json({ error: 'user_id e article_id são obrigatórios' });
+    }
+
+    // Normaliza ID: "news_123" → "123"
+    if (typeof article_id === 'string' && article_id.startsWith('news_')) {
+      article_id = article_id.replace('news_', '');
+    }
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/predict?user_id=${user_id}&article_id=${article_id}`
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao prever clique' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
   }
 });
 

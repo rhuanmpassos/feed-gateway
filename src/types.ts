@@ -100,6 +100,7 @@ export interface NewsEvent {
 
 /**
  * Interação do usuário com um artigo
+ * ATUALIZADO: Campos extras para sistema de aprendizado
  */
 export interface Interaction {
   article_id: string;           // "news_123"
@@ -107,14 +108,85 @@ export interface Interaction {
   duration?: number;            // tempo em ms (para 'view')
   position?: number;            // posição no feed
   timestamp?: number;           // quando ocorreu
+  
+  // Novos campos para aprendizado
+  scroll_velocity?: number;     // velocidade do scroll (px/s)
+  screen_position?: 'top' | 'middle' | 'bottom';  // posição na tela
+  viewport_time?: number;       // tempo no viewport (ms)
 }
 
 /**
  * Batch de interações do usuário
+ * ATUALIZADO: Suporte a sessões
  */
 export interface InteractionBatch {
   user_id: number;
+  session_id?: string;          // ID da sessão atual
+  device_type?: string;         // 'ios' | 'android' | 'web'
   interactions: Interaction[];
+}
+
+/**
+ * Sessão do usuário
+ */
+export interface UserSession {
+  id: string;
+  user_id: number;
+  started_at: string;
+  ended_at?: string;
+  duration?: number;
+  articles_viewed: number;
+  articles_clicked: number;
+  device_type?: string;
+  entry_source?: string;
+}
+
+/**
+ * Perfil do usuário (simplificado)
+ */
+export interface UserProfile {
+  isNew: boolean;
+  hasPreferences: boolean;
+  hasEmbedding: boolean;
+  features: {
+    triggersEnabled: boolean;
+    patternsEnabled: boolean;
+    predictionEnabled: boolean;
+    pushEnabled: boolean;
+  };
+  stats?: {
+    totalClicks: number;
+    totalSessions: number;
+    daysActive: number;
+  };
+}
+
+/**
+ * Metadados de exibição do artigo
+ */
+export interface DisplayMetadata {
+  show_breaking_badge: boolean;
+  show_live_badge: boolean;
+  show_new_badge: boolean;
+  show_discovery_badge: boolean;
+  urgency_badge?: string;
+  urgency_color?: string;
+  time_ago?: string;
+}
+
+/**
+ * Artigo do feed viciante (com metadados extras)
+ */
+export interface AddictiveFeedItem extends FeedItem {
+  position: number;
+  is_breaking?: boolean;
+  is_wildcard?: boolean;
+  feed_type?: 'breaking' | 'personalized' | 'wildcard' | 'popular';
+  display?: DisplayMetadata;
+  prediction?: {
+    score: number;
+    canPredict: boolean;
+  };
 }
 
 /**
