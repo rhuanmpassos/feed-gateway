@@ -46,7 +46,7 @@ const sessionStartTime = ref(null)
 const likedItems = ref(new Set())
 const bookmarkedItems = ref(new Set())
 
-// Feed mode: 'chronological' | 'for-you' | 'addictive'
+// Feed mode: 'chronological' | 'for-you'
 const feedMode = ref('chronological')
 
 // Interaction tracking
@@ -71,7 +71,7 @@ function getAuthHeaders() {
 
 // Computed
 const displayItems = computed(() => {
-  if (feedMode.value === 'for-you' || feedMode.value === 'addictive') {
+  if (feedMode.value === 'for-you') {
     return forYouItems.value
   }
   
@@ -605,7 +605,7 @@ async function loadForYouFeed() {
   if (!currentUserId.value) return
 
   try {
-    addLog('info', '🎯 Carregando feed For You...')
+    addLog('info', '🔥 Carregando feed For You...')
     const res = await fetch(`${GATEWAY_URL}/api/feeds/for-you?user_id=${currentUserId.value}&limit=50`, { headers: getAuthHeaders() })
     const data = await res.json()
     
@@ -623,47 +623,14 @@ async function loadForYouFeed() {
         category: article.category_name ? { id: article.category_id, name: article.category_name, slug: article.category_slug } : null,
         publishedAt: article.published_at,
         score: article.score,
-        scores: article.scores
+        displayMetadata: article.display_metadata
       }))
-      addLog('success', `🎯 For You: ${forYouItems.value.length} artigos`)
+      addLog('success', `🔥 For You: ${forYouItems.value.length} artigos`)
       impressionsSent.value.clear()
       observeFeedCards()
     }
   } catch (e) {
     addLog('error', 'Erro ao carregar For You', e.message)
-  }
-}
-
-async function loadAddictiveFeed() {
-  if (!currentUserId.value) return
-
-  try {
-    addLog('info', '🔥 Carregando feed Addictive...')
-    const res = await fetch(`${GATEWAY_URL}/api/feeds/addictive?user_id=${currentUserId.value}&limit=50`, { headers: getAuthHeaders() })
-    const data = await res.json()
-    
-    if (data.success || Array.isArray(data)) {
-      const items = data.data || data
-      forYouItems.value = items.map(article => ({
-        id: `news_${article.id}`,
-        source: 'news',
-        type: 'article',
-        title: article.title,
-        summary: article.summary,
-        imageUrl: article.image_url,
-        url: article.url,
-        siteName: article.site_name,
-        category: article.category_name ? { id: article.category_id, name: article.category_name } : null,
-        publishedAt: article.published_at,
-        score: article.score,
-        displayMetadata: article.display_metadata
-      }))
-      addLog('success', `🔥 Addictive: ${forYouItems.value.length} artigos`)
-      impressionsSent.value.clear()
-      observeFeedCards()
-    }
-  } catch (e) {
-    addLog('error', 'Erro ao carregar Addictive', e.message)
   }
 }
 
@@ -792,7 +759,6 @@ function updateFilters(newFilters) {
 watch(feedMode, (newMode) => {
   impressionsSent.value.clear()
   if (newMode === 'for-you') loadForYouFeed()
-  else if (newMode === 'addictive') loadAddictiveFeed()
   else observeFeedCards()
 })
 
@@ -875,15 +841,11 @@ onUnmounted(() => {
             <button 
               @click="feedMode = 'chronological'"
               :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', feedMode === 'chronological' ? 'bg-blue-500/30 text-blue-300 border border-blue-500/50' : 'bg-white/5 text-white/50 hover:bg-white/10']"
-            >📋 Crono</button>
+            >📋 Recentes</button>
             <button 
               @click="feedMode = 'for-you'"
               :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', feedMode === 'for-you' ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' : 'bg-white/5 text-white/50 hover:bg-white/10']"
-            >🎯 For You</button>
-            <button 
-              @click="feedMode = 'addictive'"
-              :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', feedMode === 'addictive' ? 'bg-red-500/30 text-red-300 border border-red-500/50' : 'bg-white/5 text-white/50 hover:bg-white/10']"
-            >🔥 Addictive</button>
+            >🔥 For You</button>
           </div>
         </div>
       </div>
@@ -911,7 +873,7 @@ onUnmounted(() => {
               <FilterBar :categories="categories" :filters="filters" @update="updateFilters" />
             </div>
             
-            <div v-if="(feedMode === 'for-you' || feedMode === 'addictive') && userPreferences.length > 0" class="glass-card rounded-xl p-4">
+            <div v-if="feedMode === 'for-you' && userPreferences.length > 0" class="glass-card rounded-xl p-4">
               <h3 class="text-sm font-medium text-white/70 mb-2">🎯 Preferências</h3>
               <div class="flex flex-wrap gap-2">
                 <span v-for="pref in userPreferences.slice(0, 8)" :key="pref.category_id" class="px-2 py-1 rounded-lg text-xs" :style="{ backgroundColor: `rgba(147, 51, 234, ${pref.preference_score * 0.5})` }">

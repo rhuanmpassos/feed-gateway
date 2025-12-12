@@ -434,7 +434,7 @@ router.get('/categories', async (req: Request, res: Response) => {
 
 /**
  * GET /api/feeds/for-you
- * Proxy para feed "For You" personalizado
+ * Feed "For You" personalizado (usa addictive internamente)
  * Query params: user_id, limit
  */
 router.get('/feeds/for-you', async (req: Request, res: Response) => {
@@ -449,8 +449,9 @@ router.get('/feeds/for-you', async (req: Request, res: Response) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (authHeader) headers['Authorization'] = authHeader;
 
+    // Chama o feed addictive (que é o verdadeiro "For You" otimizado)
     const response = await fetch(
-      `${config.newsBackendUrl}/feeds/for-you?user_id=${user_id}&limit=${limit}`,
+      `${config.newsBackendUrl}/feeds/addictive?user_id=${user_id}&limit=${limit}`,
       { headers }
     );
     
@@ -736,9 +737,40 @@ router.get('/feeds/addictive', async (req: Request, res: Response) => {
 
 /**
  * GET /api/feeds/addictive/more
+ * GET /api/feeds/for-you/more
  * Mais conteúdo para scroll infinito
  */
 router.get('/feeds/addictive/more', async (req: Request, res: Response) => {
+  try {
+    const { user_id, offset = 0, limit = 30 } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' });
+    }
+
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/addictive/more?user_id=${user_id}&offset=${offset}&limit=${limit}`,
+      { headers }
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    
+    return res.status(response.status).json({ error: 'Erro ao buscar mais conteúdo' });
+  } catch (error) {
+    console.error('Erro ao comunicar com backend:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+// Alias: /feeds/for-you/more
+router.get('/feeds/for-you/more', async (req: Request, res: Response) => {
   try {
     const { user_id, offset = 0, limit = 30 } = req.query;
     
