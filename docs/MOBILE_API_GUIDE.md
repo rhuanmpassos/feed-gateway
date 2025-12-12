@@ -1138,6 +1138,823 @@ ws.send(JSON.stringify({
 
 ---
 
+## 🛠️ Implementação React Native
+
+### Estrutura de Arquivos Recomendada
+
+```
+src/
+├── components/
+│   ├── Feed/
+│   │   ├── ArticleFeed.tsx       # Lista principal
+│   │   ├── ArticleCard.tsx       # Card do artigo
+│   │   ├── SkeletonCard.tsx      # Loading skeleton
+│   │   └── UrgencyBadge.tsx      # Badges de urgência
+│   └── Actions/
+│       ├── LikeButton.tsx        # Botão de like
+│       ├── BookmarkButton.tsx    # Botão de salvar
+│       └── ShareButton.tsx       # Botão de compartilhar
+├── hooks/
+│   ├── useSession.ts             # Gerenciamento de sessão
+│   ├── useArticleTracking.ts     # Tracking de artigo
+│   ├── useScrollTracking.ts      # Tracking de scroll
+│   └── useClickTracking.ts       # Tracking de cliques
+├── services/
+│   ├── InteractionTracker.ts     # Singleton de tracking
+│   └── api.ts                    # Cliente HTTP
+└── types/
+    └── tracking.ts               # Tipos de tracking
+```
+
+### InteractionTracker (Singleton)
+
+```typescript
+// services/InteractionTracker.ts
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { v4 as uuidv4 } from 'uuid';
+
+interface TrackingEvent {
+  article_id: string;
+  interaction_type: 'impression' | 'view' | 'scroll_stop' | 'click' | 'like' | 'share' | 'bookmark';
+  timestamp: number;
+  position?: number;
+  duration?: number;
+  scroll_velocity?: number;
+  screen_position?: 'top' | 'middle' | 'bottom';
+  viewport_time?: number;
+}
+
+class InteractionTracker {
+  private static instance: InteractionTracker;
+  
+  private queue: TrackingEvent[] = [];
+  private sessionId: string | null = null;
+  private userId: number | null = null;
+  private flushTimer: NodeJS.Timeout | null = null;
+  
+  private readonly BATCH_SIZE = 20;
+  private readonly FLUSH_INTERVAL = 30000; // 30 segundos
+  private readonly STORAGE_KEY = '@tracking_queue';
+
+  private constructor() {
+    this.loadPersistedQueue();
+  }
+
+  static getInstance(): InteractionTracker {
+    if (!InteractionTracker.instance) {
+      InteractionTracker.instance = new InteractionTracker();
+    }
+    return InteractionTracker.instance;
+  }
+
+  async initialize(userId: number, entrySource = 'organic') {
+    this.userId = userId;
+    
+    // Cria sessão no backend
+    const response = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        user_id: userId, 
+        device_type: Platform.OS,
+        entry_source: entrySource
+      })
+    });
+    
+    const { data } = await response.json();
+    this.sessionId = data.id;
+    
+    // Inicia flush timer
+    this.startFlushTimer();
+    
+    console.log('📊 Tracker inicializado:', this.sessionId);
+  }
+
+  track(event: Omit<TrackingEvent, 'timestamp'>) {
+    if (!this.userId) return;
+    
+    this.queue.push({
+      ...event,
+      timestamp: Date.now()
+    });
+    
+    this.persistQueue();
+    
+    if (this.queue.length >= this.BATCH_SIZE) {
+      this.flush();
+    }
+  }
+
+  // Atalhos
+  trackImpression(articleId: number, position: number) {
+    this.track({ article_id: `news_${articleId}`, interaction_type: 'impression', position });
+  }
+
+  trackView(articleId: number, duration: number, screenPosition: 'top' | 'middle' | 'bottom') {
+    this.track({ article_id: `news_${articleId}`, interaction_type: 'view', duration, screen_position: screenPosition });
+  }
+
+  trackScrollStop(articleId: number, viewportTime: number, scrollVelocity: number) {
+    this.track({ article_id: `news_${articleId}`, interaction_type: 'scroll_stop', viewport_time: viewportTime, scroll_velocity: scrollVelocity });
+  }
+
+  trackClick(articleId: number, position: number) {
+    this.track({ article_id: `news_${articleId}`, interaction_type: 'click', position });
+  }
+
+  trackLike(articleId: number) {
+    this.track({ article_id: `news_${articleId}`, interaction_type: 'like' });
+  }
+
+  trackShare(articleId: number) {
+    this.track({ article_id: `news_${articleId}`, interaction_type: 'share' });
+  }
+
+  trackBookmark(articleId: number) {
+    this.track({ article_id: `news_${articleId}`, interaction_type: 'bookmark' });
+  }
+
+  async flush() {
+    if (this.queue.length === 0 || !this.userId || !this.sessionId) return;
+    
+    const batch = [...this.queue];
+    this.queue = [];
+    this.persistQueue();
+    
+    try {
+      await fetch('/api/interactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: this.userId,
+          session_id: this.sessionId,
+          device_type: Platform.OS,
+          interactions: batch
+        })
+      });
+      console.log(`📤 Enviados ${batch.length} eventos`);
+    } catch (error) {
+      // Requeue em caso de erro
+      this.queue = [...batch, ...this.queue];
+      this.persistQueue();
+    }
+  }
+
+  async endSession() {
+    await this.flush();
+    
+    if (this.sessionId) {
+      await fetch(`/api/sessions/${this.sessionId}/end`, { method: 'PUT' });
+      this.sessionId = null;
+    }
+    
+    this.stopFlushTimer();
+    console.log('📊 Sessão finalizada');
+  }
+
+  private startFlushTimer() {
+    this.flushTimer = setInterval(() => this.flush(), this.FLUSH_INTERVAL);
+  }
+
+  private stopFlushTimer() {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+  }
+
+  private async persistQueue() {
+    await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.queue));
+  }
+
+  private async loadPersistedQueue() {
+    const stored = await AsyncStorage.getItem(this.STORAGE_KEY);
+    if (stored) this.queue = JSON.parse(stored);
+  }
+}
+
+export const tracker = InteractionTracker.getInstance();
+```
+
+### Hook useSession
+
+```typescript
+// hooks/useSession.ts
+
+import { useEffect, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
+import { tracker } from '../services/InteractionTracker';
+
+export function useSession(userId: number | null) {
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    if (!userId) return;
+    
+    // Inicializa tracker
+    tracker.initialize(userId);
+
+    // Escuta mudanças de estado do app
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
+        // App foi para background
+        tracker.endSession();
+      } else if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App voltou
+        tracker.initialize(userId);
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+      tracker.endSession();
+    };
+  }, [userId]);
+}
+```
+
+### Hook useArticleTracking
+
+```typescript
+// hooks/useArticleTracking.ts
+
+import { useEffect, useRef, useCallback } from 'react';
+import { tracker } from '../services/InteractionTracker';
+
+export function useArticleTracking(articleId: number, position: number) {
+  const impressionTracked = useRef(false);
+  const visibleStartTime = useRef<number | null>(null);
+
+  const onVisibilityChange = useCallback((isVisible: boolean) => {
+    if (isVisible) {
+      // Artigo entrou na viewport
+      visibleStartTime.current = Date.now();
+      
+      // Track impression (apenas uma vez)
+      if (!impressionTracked.current) {
+        tracker.trackImpression(articleId, position);
+        impressionTracked.current = true;
+      }
+    } else if (visibleStartTime.current) {
+      // Artigo saiu da viewport
+      const duration = Date.now() - visibleStartTime.current;
+      
+      // Se ficou mais de 2 segundos, registra scroll_stop
+      if (duration > 2000) {
+        tracker.trackScrollStop(articleId, duration, 0);
+      }
+      
+      visibleStartTime.current = null;
+    }
+  }, [articleId, position]);
+
+  // Reset quando articleId muda
+  useEffect(() => {
+    impressionTracked.current = false;
+    visibleStartTime.current = null;
+  }, [articleId]);
+
+  return { onVisibilityChange };
+}
+```
+
+### Hook useClickTracking
+
+```typescript
+// hooks/useClickTracking.ts
+
+import { useCallback } from 'react';
+import * as Haptics from 'expo-haptics';
+import { tracker } from '../services/InteractionTracker';
+
+export function useClickTracking(articleId: number, position: number) {
+  const trackClick = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    tracker.trackClick(articleId, position);
+  }, [articleId, position]);
+
+  const trackLike = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    tracker.trackLike(articleId);
+  }, [articleId]);
+
+  const trackBookmark = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    tracker.trackBookmark(articleId);
+  }, [articleId]);
+
+  const trackShare = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    tracker.trackShare(articleId);
+  }, [articleId]);
+
+  return { trackClick, trackLike, trackBookmark, trackShare };
+}
+```
+
+### Componente ArticleFeed (FlashList)
+
+```tsx
+// components/Feed/ArticleFeed.tsx
+
+import { FlashList, ViewToken } from '@shopify/flash-list';
+import { useCallback, useState, useRef } from 'react';
+import { RefreshControl } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { ArticleCard } from './ArticleCard';
+import { SkeletonCard } from './SkeletonCard';
+
+interface ArticleFeedProps {
+  userId: number;
+}
+
+export function ArticleFeed({ userId }: ArticleFeedProps) {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [visibleIds, setVisibleIds] = useState<number[]>([]);
+  
+  const PREFETCH_THRESHOLD = 10;
+  const PAGE_SIZE = 30;
+
+  // Carrega mais artigos
+  const loadMore = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    
+    try {
+      const response = await fetch(
+        `/api/feeds/addictive?user_id=${userId}&offset=${offset}&limit=${PAGE_SIZE}`
+      );
+      const { data } = await response.json();
+      setArticles(prev => [...prev, ...data]);
+      setOffset(prev => prev + PAGE_SIZE);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [offset, isLoading, userId]);
+
+  // Pull to refresh
+  const handleRefresh = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsRefreshing(true);
+    
+    try {
+      const response = await fetch(
+        `/api/feeds/addictive?user_id=${userId}&limit=${PAGE_SIZE}&refresh=true`
+      );
+      const { data } = await response.json();
+      setArticles(data);
+      setOffset(PAGE_SIZE);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [userId]);
+
+  // Tracking de visibilidade
+  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const ids = viewableItems
+      .filter(item => item.isViewable)
+      .map(item => item.item.id);
+    setVisibleIds(ids);
+  }, []);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 500
+  });
+
+  return (
+    <FlashList
+      data={articles}
+      renderItem={({ item, index }) => (
+        <ArticleCard 
+          article={item} 
+          position={index}
+          isVisible={visibleIds.includes(item.id)}
+        />
+      )}
+      estimatedItemSize={320}
+      onEndReached={loadMore}
+      onEndReachedThreshold={PREFETCH_THRESHOLD / articles.length}
+      onViewableItemsChanged={onViewableItemsChanged}
+      viewabilityConfig={viewabilityConfig.current}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+          tintColor="#FF3B30"
+        />
+      }
+      ListFooterComponent={isLoading ? <SkeletonCards count={3} /> : null}
+      removeClippedSubviews={true}
+      decelerationRate="fast"
+      showsVerticalScrollIndicator={false}
+    />
+  );
+}
+```
+
+### Componente ArticleCard
+
+```tsx
+// components/Feed/ArticleCard.tsx
+
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { MotiView } from 'moti';
+import { useEffect } from 'react';
+import { useClickTracking } from '../../hooks/useClickTracking';
+import { useArticleTracking } from '../../hooks/useArticleTracking';
+import { UrgencyBadge } from './UrgencyBadge';
+import { ActionButton } from '../Actions/ActionButton';
+
+interface ArticleCardProps {
+  article: Article;
+  position: number;
+  isVisible: boolean;
+  onPress?: () => void;
+}
+
+export function ArticleCard({ article, position, isVisible, onPress }: ArticleCardProps) {
+  const { trackClick, trackLike, trackBookmark, trackShare } = useClickTracking(article.id, position);
+  const { onVisibilityChange } = useArticleTracking(article.id, position);
+
+  // Notifica mudança de visibilidade
+  useEffect(() => {
+    onVisibilityChange(isVisible);
+  }, [isVisible, onVisibilityChange]);
+
+  const handlePress = () => {
+    trackClick();
+    onPress?.();
+  };
+
+  return (
+    <MotiView
+      from={{ opacity: 0, translateY: 20 }}
+      animate={{ opacity: 1, translateY: 0 }}
+      transition={{ type: 'timing', duration: 300, delay: position * 50 }}
+      style={styles.card}
+    >
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.95}>
+        {/* Imagem */}
+        {article.image_url && (
+          <View style={styles.imageContainer}>
+            <Image source={{ uri: article.image_url }} style={styles.image} />
+            
+            {/* Badge de urgência */}
+            {article.display?.urgency_badge && (
+              <View style={styles.badgeOverlay}>
+                <UrgencyBadge 
+                  text={article.display.urgency_badge}
+                  color={article.display.urgency_color}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Conteúdo */}
+        <View style={styles.content}>
+          <View style={styles.meta}>
+            <Text style={styles.source}>{article.site_name}</Text>
+            <Text style={styles.dot}>•</Text>
+            <Text style={styles.time}>{article.display?.time_ago}</Text>
+          </View>
+
+          <Text style={styles.title} numberOfLines={3}>
+            {article.title}
+          </Text>
+
+          {/* Ações */}
+          <View style={styles.actions}>
+            <ActionButton
+              icon="star"
+              isActive={article.is_liked}
+              activeColor="#FFD60A"
+              onPress={trackLike}
+            />
+            <ActionButton
+              icon="bookmark"
+              isActive={article.is_bookmarked}
+              activeColor="#007AFF"
+              onPress={trackBookmark}
+            />
+            <ActionButton
+              icon="share"
+              onPress={trackShare}
+            />
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Indicador de descoberta */}
+      {article.is_wildcard && (
+        <View style={styles.discoveryBadge}>
+          <Text style={styles.discoveryText}>💡 Pra você</Text>
+        </View>
+      )}
+    </MotiView>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: '#141416',
+    marginHorizontal: 12,
+    marginVertical: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  imageContainer: {
+    width: '100%',
+    height: 180,
+    position: 'relative',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  badgeOverlay: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+  },
+  content: {
+    padding: 16,
+  },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  source: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF3B30',
+  },
+  dot: {
+    marginHorizontal: 6,
+    color: '#636366',
+  },
+  time: {
+    fontSize: 12,
+    color: '#A1A1A6',
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  discoveryBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(175,82,222,0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  discoveryText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+});
+```
+
+### Componente UrgencyBadge
+
+```tsx
+// components/Feed/UrgencyBadge.tsx
+
+import { View, Text, StyleSheet } from 'react-native';
+import { MotiView } from 'moti';
+
+interface UrgencyBadgeProps {
+  text: string;
+  color: string;
+  pulse?: boolean;
+}
+
+export function UrgencyBadge({ text, color, pulse = false }: UrgencyBadgeProps) {
+  const Wrapper = pulse ? PulsingWrapper : View;
+  
+  return (
+    <Wrapper style={[styles.badge, { backgroundColor: `${color}20`, borderColor: color }]}>
+      <Text style={[styles.text, { color }]}>{text}</Text>
+    </Wrapper>
+  );
+}
+
+function PulsingWrapper({ children, style }: any) {
+  return (
+    <MotiView
+      from={{ scale: 1, opacity: 1 }}
+      animate={{ scale: 1.05, opacity: 0.9 }}
+      transition={{ type: 'timing', duration: 800, loop: true }}
+      style={style}
+    >
+      {children}
+    </MotiView>
+  );
+}
+
+const styles = StyleSheet.create({
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  text: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+});
+```
+
+### Componente ActionButton (Animado)
+
+```tsx
+// components/Actions/ActionButton.tsx
+
+import { TouchableOpacity, StyleSheet } from 'react-native';
+import { MotiView } from 'moti';
+import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+
+interface ActionButtonProps {
+  icon: 'star' | 'bookmark' | 'share';
+  isActive?: boolean;
+  activeColor?: string;
+  onPress: () => void;
+}
+
+const ICONS = {
+  star: { outline: 'star-outline', filled: 'star' },
+  bookmark: { outline: 'bookmark-outline', filled: 'bookmark' },
+  share: { outline: 'share-outline', filled: 'share-outline' },
+};
+
+export function ActionButton({ icon, isActive, activeColor, onPress }: ActionButtonProps) {
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  const handlePress = () => {
+    setIsAnimating(true);
+    onPress();
+    setTimeout(() => setIsAnimating(false), 300);
+  };
+
+  const iconName = isActive ? ICONS[icon].filled : ICONS[icon].outline;
+  const iconColor = isActive ? activeColor : '#636366';
+
+  return (
+    <TouchableOpacity onPress={handlePress} style={styles.button}>
+      <MotiView
+        animate={{
+          scale: isAnimating ? [1, 0.8, 1.2, 1] : 1,
+        }}
+        transition={{ type: 'timing', duration: 300 }}
+      >
+        <Ionicons name={iconName} size={24} color={iconColor} />
+      </MotiView>
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  button: {
+    padding: 8,
+  },
+});
+```
+
+### Componente SkeletonCard
+
+```tsx
+// components/Feed/SkeletonCard.tsx
+
+import { View, StyleSheet } from 'react-native';
+import { MotiView } from 'moti';
+import { Skeleton } from 'moti/skeleton';
+
+export function SkeletonCard() {
+  return (
+    <MotiView style={styles.card}>
+      <Skeleton colorMode="dark" width="100%" height={180} radius={12} />
+      <View style={styles.content}>
+        <Skeleton colorMode="dark" width="30%" height={14} radius={4} />
+        <Skeleton colorMode="dark" width="100%" height={18} radius={4} />
+        <Skeleton colorMode="dark" width="80%" height={18} radius={4} />
+        <View style={styles.actions}>
+          <Skeleton colorMode="dark" width={24} height={24} radius={12} />
+          <Skeleton colorMode="dark" width={24} height={24} radius={12} />
+          <Skeleton colorMode="dark" width={24} height={24} radius={12} />
+        </View>
+      </View>
+    </MotiView>
+  );
+}
+
+export function SkeletonCards({ count = 3 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: '#141416',
+    marginHorizontal: 12,
+    marginVertical: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  content: {
+    padding: 16,
+    gap: 8,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 8,
+  },
+});
+```
+
+### Uso no App Principal
+
+```tsx
+// App.tsx ou _layout.tsx
+
+import { useSession } from './hooks/useSession';
+import { useAuth } from './hooks/useAuth';
+import { ArticleFeed } from './components/Feed/ArticleFeed';
+
+export default function App() {
+  const { user } = useAuth();
+
+  // Inicializa tracking
+  useSession(user?.id);
+
+  return (
+    <NavigationContainer>
+      <Tab.Navigator>
+        <Tab.Screen name="ParaVoce">
+          {() => <ArticleFeed userId={user.id} />}
+        </Tab.Screen>
+        <Tab.Screen name="Agora" component={ChronologicalFeed} />
+        <Tab.Screen name="Salvos" component={BookmarksScreen} />
+        <Tab.Screen name="Perfil" component={ProfileScreen} />
+      </Tab.Navigator>
+    </NavigationContainer>
+  );
+}
+```
+
+---
+
+## 📦 Dependências Necessárias
+
+```bash
+# Core
+npm install @shopify/flash-list
+npm install moti
+npm install expo-haptics
+
+# Armazenamento
+npm install @react-native-async-storage/async-storage
+
+# UUID
+npm install uuid
+npm install --save-dev @types/uuid
+
+# Ícones
+npm install @expo/vector-icons
+
+# Animações (se não usar Expo)
+npm install react-native-reanimated
+```
+
+---
+
 ## 🎯 Checklist de Implementação
 
 ### Essencial (MVP)
@@ -1201,6 +2018,7 @@ Verifique se `article_id` está no formato `"news_123"` (com prefixo).
 
 | Versão | Data | Mudanças |
 |--------|------|----------|
+| 4.0.0 | 2025-12-11 | Implementação React Native completa: hooks, componentes, tracking, animações |
 | 3.0.0 | 2025-12-11 | Estrutura do app, design visual, ações do card (like/bookmark/share), badges de urgência |
 | 2.0.0 | 2025-12-11 | Feed viciante, sistema de aprendizado, sessões |
 | 1.0.0 | 2025-12-10 | Versão inicial |
