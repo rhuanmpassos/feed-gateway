@@ -446,6 +446,35 @@ router.get('/categories', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/feeds/chronological
+ * Feed cronológico - apenas categorias escolhidas pelo usuário no onboarding
+ * Query params: user_id (obrigatório), limit, offset
+ */
+router.get('/feeds/chronological', async (req: Request, res: Response) => {
+  const { user_id, limit = 50, offset = 0 } = req.query;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id é obrigatório' });
+  }
+
+  try {
+    const authHeader = req.headers.authorization;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(
+      `${config.newsBackendUrl}/feeds/chronological?user_id=${user_id}&limit=${limit}&offset=${offset}`,
+      { headers }
+    );
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar feed cronológico:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
  * GET /api/feeds/for-you
  * Feed "For You" personalizado (usa addictive internamente)
  * Query params: user_id, limit

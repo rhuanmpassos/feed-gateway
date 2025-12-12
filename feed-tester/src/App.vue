@@ -179,6 +179,8 @@ async function endSession() {
 // ========== JWT AUTH ==========
 async function handleLogin({ email, password }) {
   authError.value = ''
+  // CORRIGIDO: Limpa dados do usuário anterior antes de fazer login (mas mantém logs)
+  clearUserData()
   try {
     addLog('info', 'Fazendo login...')
     const res = await fetch(`${GATEWAY_URL}/api/auth/login`, {
@@ -225,6 +227,8 @@ async function handleLogin({ email, password }) {
 
 async function handleRegister({ name, email, password }) {
   authError.value = ''
+  // CORRIGIDO: Limpa dados do usuário anterior antes de criar novo (mas mantém logs)
+  clearUserData()
   try {
     addLog('info', 'Criando conta...')
     const res = await fetch(`${GATEWAY_URL}/api/auth/register`, {
@@ -328,6 +332,23 @@ async function loadUserData() {
     const prefsData = await prefsRes.json()
     if (prefsData.success) {
       userPreferences.value = prefsData.data || []
+      
+      // CORRIGIDO: Atualiza filtros do WebSocket com categorias escolhidas pelo usuário
+      // Isso garante que o feed cronológico mostre apenas categorias do onboarding
+      if (userPreferences.value.length > 0) {
+        const userCategorySlugs = userPreferences.value
+          .map(p => p.category_slug)
+          .filter(Boolean)
+        
+        if (userCategorySlugs.length > 0) {
+          filters.value.categories = userCategorySlugs
+          // Se WebSocket estiver conectado, atualiza filtros
+          if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+            ws.value.send(JSON.stringify({ action: 'subscribe', filters: filters.value }))
+            addLog('info', `🔍 Filtros atualizados: ${userCategorySlugs.length} categorias do onboarding`)
+          }
+        }
+      }
     }
 
     // Stats
@@ -371,30 +392,62 @@ async function loadUserData() {
   }
 }
 
-function clearUser() {
+// Limpa dados do usuário (sem limpar logs) - usado antes de login/registro
+function clearUserData() {
   endSession()
   
+  // Limpa autenticação
   authToken.value = null
   currentUserId.value = null
   currentUserName.value = ''
   currentUserEmail.value = ''
   currentSessionId.value = null
+  pendingUserId.value = null
   
+  // Limpa localStorage
   localStorage.removeItem('auth_token')
   localStorage.removeItem('test_user_id')
   localStorage.removeItem('user_name')
   localStorage.removeItem('user_email')
+  localStorage.removeItem('has_session')
   
+  // Limpa dados do usuário
   userPreferences.value = []
   userStats.value = null
   userProfile.value = null
   userPatterns.value = null
+  
+  // Limpa feeds
+  feedItems.value = []
   forYouItems.value = []
+  breakingNews.value = []
+  
+  // Limpa interações pendentes e tracking
+  interactionQueue.value = []
   likedItems.value = new Set()
   bookmarkedItems.value = new Set()
-  feedMode.value = 'chronological'
+  viewStartTimes.value.clear()
+  impressionsSent.value.clear()
+  scrollStopTimers.value.clear()
   
-  addLog('info', '👋 Logout realizado')
+  // Limpa intervalos
+  if (interactionInterval.value) {
+    clearInterval(interactionInterval.value)
+    interactionInterval.value = null
+  }
+  if (statsRefreshInterval.value) {
+    clearInterval(statsRefreshInterval.value)
+    statsRefreshInterval.value = null
+  }
+  
+  // Reset feed mode
+  feedMode.value = 'chronological'
+}
+
+// Logout completo (limpa tudo incluindo logs)
+function clearUser() {
+  clearUserData()
+  addLog('info', '👋 Logout realizado - dados limpos')
 }
 
 // ========== INTERACTION TRACKING ==========
@@ -735,7 +788,13 @@ function connect() {
     wsStatus.value = 'connected'
     addLog('success', 'Conectado ao Gateway!')
     
-    ws.value.send(JSON.stringify({ action: 'subscribe', filters: filters.value }))
+    // CORRIGIDO: Se estiver no modo cronológico, usa categorias do usuário
+    // Se não tiver categorias do usuário, usa filtros vazios (mostra tudo até ter preferências)
+    const filtersToSend = feedMode.value === 'chronological' && userPreferences.value.length > 0
+      ? { categories: userPreferences.value.map(p => p.category_slug).filter(Boolean) }
+      : filters.value
+    
+    ws.value.send(JSON.stringify({ action: 'subscribe', filters: filtersToSend }))
     ws.value.send(JSON.stringify({ action: 'get_history', limit: 50 }))
   }
   
@@ -831,6 +890,15 @@ watch(feedMode, (newMode) => {
   if (newMode === 'for-you') {
     loadForYouFeed()
   } else {
+    // CORRIGIDO: No modo cronológico, atualiza filtros do WebSocket com categorias do usuário
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      const filtersToSend = userPreferences.value.length > 0
+        ? { categories: userPreferences.value.map(p => p.category_slug).filter(Boolean) }
+        : { categories: [] }
+      
+      ws.value.send(JSON.stringify({ action: 'subscribe', filters: filtersToSend }))
+      addLog('info', `📋 Modo cronológico: ${filtersToSend.categories.length} categorias do onboarding`)
+    }
     observeFeedCards()
   }
 })
