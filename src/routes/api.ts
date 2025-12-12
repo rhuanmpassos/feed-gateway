@@ -56,10 +56,10 @@ router.get('/feed', (req: Request, res: Response) => {
 /**
  * POST /api/bookmark
  * Proxy para salvar bookmark
- * Body: { id: "news_456" }
+ * Body: { id: "news_456", user_id: number }
  */
 router.post('/bookmark', async (req: Request, res: Response) => {
-  const { id } = req.body;
+  const { id, user_id } = req.body;
 
   if (!id) {
     return res.status(400).json({ error: 'ID é obrigatório' });
@@ -71,7 +71,11 @@ router.post('/bookmark', async (req: Request, res: Response) => {
       const articleId = id.replace('news_', '');
       const response = await fetch(
         `${config.newsBackendUrl}/api/articles/${articleId}/bookmark`,
-        { method: 'POST' }
+        { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id })
+        }
       );
       const data = await response.json();
       return res.status(response.status).json(data);
@@ -80,6 +84,91 @@ router.post('/bookmark', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'ID inválido. Use formato news_xxx' });
   } catch (error) {
     console.error('Erro ao fazer bookmark:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * POST /api/articles/:id/like
+ * Adiciona like (estrela) ao artigo
+ * Body: { user_id: number }
+ */
+router.post('/articles/:id/like', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id é obrigatório' });
+  }
+
+  try {
+    // Normaliza ID: "news_123" → "123"
+    const articleId = id.startsWith('news_') ? id.replace('news_', '') : id;
+    
+    const response = await fetch(
+      `${config.newsBackendUrl}/api/articles/${articleId}/like`,
+      { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id })
+      }
+    );
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao adicionar like:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * DELETE /api/articles/:id/like
+ * Remove like do artigo
+ * Query: user_id
+ */
+router.delete('/articles/:id/like', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { user_id } = req.query;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id é obrigatório' });
+  }
+
+  try {
+    const articleId = id.startsWith('news_') ? id.replace('news_', '') : id;
+    
+    const response = await fetch(
+      `${config.newsBackendUrl}/api/articles/${articleId}/like?user_id=${user_id}`,
+      { method: 'DELETE' }
+    );
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao remover like:', error);
+    return res.status(500).json({ error: 'Erro ao comunicar com backend' });
+  }
+});
+
+/**
+ * GET /api/articles/liked
+ * Lista artigos com like do usuário
+ * Query: user_id, limit
+ */
+router.get('/articles/liked', async (req: Request, res: Response) => {
+  const { user_id, limit = 100 } = req.query;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id é obrigatório' });
+  }
+
+  try {
+    const response = await fetch(
+      `${config.newsBackendUrl}/api/articles/liked?user_id=${user_id}&limit=${limit}`
+    );
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Erro ao buscar artigos liked:', error);
     return res.status(500).json({ error: 'Erro ao comunicar com backend' });
   }
 });

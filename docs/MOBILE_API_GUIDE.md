@@ -4,13 +4,233 @@
 
 ---
 
+## 📋 Índice
+
+1. [Estrutura do App](#-estrutura-do-app)
+2. [Design Visual](#-design-visual)
+3. [Conexão com o Gateway](#-conexão-com-o-gateway)
+4. [Autenticação e Onboarding](#-fluxo-de-autenticação-e-onboarding)
+5. [Feeds de Notícias](#-feeds-de-notícias)
+6. [Ações do Card (Like, Bookmark, Share)](#-ações-do-card)
+7. [Sistema de Interações](#-sistema-de-interações-obrigatório)
+8. [Perfil e Padrões](#-perfil-e-padrões-do-usuário)
+9. [WebSocket](#-websocket-tempo-real)
+
+---
+
+## 📱 Estrutura do App
+
+### Navegação Principal (Bottom Tabs)
+
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│              [CONTEÚDO]                 │
+│                                         │
+├──────────┬──────────┬─────────┬─────────┤
+│  Para    │  Agora   │ Salvos  │ Perfil  │
+│  Você    │          │         │         │
+│   🏠     │    ⚡    │   🔖    │   👤    │
+└──────────┴──────────┴─────────┴─────────┘
+```
+
+| Tab | Nome | Endpoint | Descrição |
+|-----|------|----------|-----------|
+| 🏠 | **Para Você** | `/api/feeds/addictive` | Feed personalizado com algoritmo |
+| ⚡ | **Agora** | `/api/feed` | Feed cronológico + Breaking News no topo |
+| 🔖 | **Salvos** | `/api/bookmarks` | Artigos salvos pelo usuário |
+| 👤 | **Perfil** | `/api/users/:id` | Preferências e configurações |
+
+### Fluxo de Telas
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│  SPLASH → ONBOARDING → HOME (Para Você)                 │
+│             ↓                                           │
+│      ┌─────────────────┐                                │
+│      │ 1. Proposta     │                                │
+│      │ 2. Categorias   │ (mínimo 3)                     │
+│      │ 3. Notificações │ (opcional)                     │
+│      └─────────────────┘                                │
+│                                                         │
+│  HOME ──┬── Toca card ──→ WebView/Browser               │
+│         │                                               │
+│         ├── Pull down ──→ Refresh                       │
+│         │                                               │
+│         ├── Scroll ─────→ Infinite loading              │
+│         │                                               │
+│         └── Tabs ───────→ Agora / Salvos / Perfil       │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🎨 Design Visual
+
+### Paleta de Cores (Dark Mode - Padrão)
+
+```
+BACKGROUNDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#0A0A0B  ████  Fundo principal
+#141416  ████  Cards/Superfícies
+#1C1C1E  ████  Elevated (modais)
+
+TEXTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#FFFFFF  ████  Títulos (100%)
+#A1A1A6  ████  Subtexto (60%)
+#636366  ████  Metadata (40%)
+
+ACCENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#FF3B30  ████  URGENTE (vermelho)
+#FF9500  ████  AGORA (laranja)
+#34C759  ████  NOVO (verde)
+#AF52DE  ████  Descoberta (roxo)
+#007AFF  ████  Links/Bookmark (azul)
+#FFD60A  ████  Like/Estrela (amarelo)
+```
+
+### Tipografia
+
+```
+TÍTULOS:    "Playfair Display" ou "Lora" (Serif)
+CORPO:      "Inter" ou "SF Pro Text" (Sans-serif)
+METADATA:   "SF Mono" ou sistema (Monospace)
+
+Hierarquia:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Título Card:    17px, weight 600, line 22px
+Resumo:         15px, weight 400, line 22px
+Metadata:       13px, weight 500, line 18px, #A1A1A6
+Badge:          11px, weight 700, UPPERCASE
+```
+
+### Anatomia do Card
+
+```
+┌─ 16px padding ─────────────────────────────────┐
+│                                                │
+│  ┌──────────────────────────────────────────┐ │
+│  │                                          │ │
+│  │              IMAGEM                      │ │
+│  │              aspect-ratio: 16:9          │ │
+│  │              border-radius: 12px         │ │
+│  │                                          │ │
+│  └──────────────────────────────────────────┘ │
+│                                                │
+│  ← 12px gap →                                  │
+│                                                │
+│  ┌────────────┐                                │
+│  │  URGENTE   │  ← badge vermelho (se aplicável)
+│  └────────────┘                                │
+│                                                │
+│  ← 4px gap →                                   │
+│                                                │
+│  Título da notícia que pode                    │
+│  ocupar até duas linhas...                     │
+│                                                │
+│  ← 8px gap →                                   │
+│                                                │
+│  G1  •  2 min                                  │
+│                                                │
+│  ← 12px gap →                                  │
+│                                                │
+│  ⭐         🔖         ↗️                       │
+│  Like     Salvar    Compartilhar              │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### Badges de Urgência
+
+```
+URGENTE (< 30 min + breaking)
+┌─────────────┐
+│   URGENTE   │  bg: rgba(255,59,48,0.15)
+└─────────────┘  text: #FF3B30, border: #FF3B30
+
+AGORA (< 2 horas)
+┌─────────────┐
+│    AGORA    │  bg: rgba(255,149,0,0.15)
+└─────────────┘  text: #FF9500
+
+NOVO (< 6 horas)
+┌─────────────┐
+│  ● NOVO     │  bg: transparent
+└─────────────┘  text: #34C759
+
+DESCOBERTA (wildcard)
+┌─────────────┐
+│ 💡 Pra você │  bg: rgba(175,82,222,0.15)
+└─────────────┘  text: #AF52DE
+```
+
+### Estados Visuais
+
+```
+ARTIGO NÃO LIDO
+┌──────────────────────────────────────────┐
+│ [IMG]  Título em branco 100%             │
+│        Fonte • 2 min                     │
+└──────────────────────────────────────────┘
+
+ARTIGO JÁ LIDO
+┌──────────────────────────────────────────┐
+│ [IMG]  Título em cinza 50%   ← opacity   │
+│ 50%    Fonte • 2 min            0.5      │
+└──────────────────────────────────────────┘
+
+ARTIGO LIKED
+┌──────────────────────────────────────────┐
+│ [IMG]  Título normal                     │
+│        Fonte • 2 min      ⭐ ← amarelo   │
+└──────────────────────────────────────────┘
+
+ARTIGO SALVO
+┌──────────────────────────────────────────┐
+│ [IMG]  Título normal                     │
+│        Fonte • 2 min      🔖 ← azul      │
+└──────────────────────────────────────────┘
+```
+
+### Loading States
+
+**Skeleton com Shimmer:**
+```
+┌────────────────────────────────────────────────┐
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│
+│ ░░░░░░░░░░░ SHIMMER →→→ ░░░░░░░░░░░░░░░░░░░░░░│
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│
+└────────────────────────────────────────────────┘
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░           │
+│ ░░░░░░░░░░░░░░░░░░░░░░                         │
+│ ░░░░░░░░░░                                     │
+└────────────────────────────────────────────────┘
+
+Animation: linear-gradient moving left to right
+Duration: 1.5s, infinite
+```
+
+**Pull to Refresh:**
+```
+↓ Puxe para atualizar
+     ○ (spinner)
+✓ Atualizado! (fade out após 1s)
+```
+
+---
+
 ## 🌐 Conexão com o Gateway
 
 ### URLs de Ambiente
 
 ```
-PRODUÇÃO:    https://gateway.seudominio.com
-STAGING:     https://gateway-staging.seudominio.com
+PRODUÇÃO:    https://feed-gateway.onrender.com
 LOCAL:       http://localhost:3002
 ```
 
@@ -20,7 +240,6 @@ LOCAL:       http://localhost:3002
 const headers = {
   'Content-Type': 'application/json',
   'Accept': 'application/json',
-  // Opcional: identificação do app
   'X-App-Version': '1.0.0',
   'X-Platform': 'ios' | 'android'
 };
@@ -29,6 +248,91 @@ const headers = {
 ---
 
 ## 🔐 Fluxo de Autenticação e Onboarding
+
+### Telas do Onboarding
+
+**Tela 1: Splash (2-3 segundos)**
+```
+┌─────────────────────────────────────┐
+│                                     │
+│                                     │
+│                                     │
+│              [LOGO]                 │
+│                                     │
+│           Nome do App               │
+│                                     │
+│                                     │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+**Tela 2: Proposta de Valor**
+```
+┌─────────────────────────────────────┐
+│                                     │
+│         📰                          │
+│                                     │
+│   Notícias que importam             │
+│                                     │
+│   Curadas por IA para você.         │
+│   Sem ruído, sem clickbait.         │
+│                                     │
+│        [ Começar → ]                │
+│                                     │
+│         Já tenho conta              │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+**Tela 3: Seleção de Interesses (CRUCIAL)**
+```
+┌─────────────────────────────────────┐
+│                                     │
+│   O que te interessa?               │
+│   Selecione pelo menos 3            │
+│                                     │
+│  ┌─────────┐ ┌─────────┐ ┌────────┐│
+│  │🏛️Política│ │💰Economia│ │⚽Esporte││
+│  └─────────┘ └─────────┘ └────────┘│
+│  ┌─────────┐ ┌─────────┐ ┌────────┐│
+│  │💻Tecnolog│ │🎬Entreten│ │🌍 Mundo ││
+│  └─────────┘ └─────────┘ └────────┘│
+│  ┌─────────┐ ┌─────────┐ ┌────────┐│
+│  │🔬Ciência │ │💼Negócios│ │🏥 Saúde ││
+│  └─────────┘ └─────────┘ └────────┘│
+│                                     │
+│    [ Continuar ] (3 selecionados)   │
+│                                     │
+└─────────────────────────────────────┘
+
+Regras:
+- Mínimo 3 categorias obrigatório
+- Chips com animação de seleção (scale + cor)
+- Botão só ativa quando tem 3+
+- Contador visual "3/3 selecionados"
+```
+
+**Tela 4: Notificações (Opcional)**
+```
+┌─────────────────────────────────────┐
+│                                     │
+│              🔔                     │
+│                                     │
+│   Quer saber primeiro?              │
+│                                     │
+│   Receba alertas de notícias        │
+│   importantes na hora.              │
+│                                     │
+│     [ Ativar Notificações ]         │
+│                                     │
+│           Agora não                 │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+**→ Vai direto para o Feed "Para Você"**
+
+---
 
 ### 1. Criar ou Buscar Usuário
 
@@ -155,7 +459,7 @@ GET /api/feeds/for-you?user_id=1&limit=50
 }
 ```
 
-### 🔥 Feed Viciante (Recomendado)
+### 🔥 Feed "Para Você" (Principal)
 
 > **USE ESTE!** Feed otimizado para máximo engajamento com personalização avançada.
 
@@ -177,7 +481,7 @@ GET /api/feeds/addictive?user_id=1&limit=50&offset=0
   "data": [
     {
       "id": 123,
-      "title": "🔴 URGENTE: Título da Notícia",
+      "title": "Título da Notícia",
       "summary": "Resumo...",
       "image_url": "https://...",
       "url": "https://...",
@@ -185,22 +489,24 @@ GET /api/feeds/addictive?user_id=1&limit=50&offset=0
       "category": { "id": 1, "name": "Política", "slug": "politica" },
       "published_at": "2025-12-11T10:00:00Z",
       
-      // Campos extras do feed viciante
+      // Campos extras do feed
       "position": 1,
       "is_breaking": true,
       "is_wildcard": false,
-      "feed_type": "breaking",  // "breaking" | "personalized" | "wildcard" | "popular"
+      "is_liked": false,
+      "is_bookmarked": false,
+      "feed_type": "breaking",  // "breaking" | "personalized" | "wildcard" | "discovery"
       "display": {
-        "show_breaking_badge": true,
-        "show_live_badge": false,
-        "show_new_badge": false,
-        "show_discovery_badge": false,
-        "urgency_badge": "🔴 AO VIVO",
-        "urgency_color": "#FF0000",
-        "time_ago": "2 min atrás"
+        "show_breaking_badge": true,   // Notícia < 2h
+        "show_new_badge": false,       // Notícia < 30min
+        "show_discovery_badge": false, // Wildcard/fora do padrão
+        "urgency_level": "high",       // "high" | "medium" | "low" | null
+        "urgency_badge": "URGENTE",    // "URGENTE" | "AGORA" | null
+        "urgency_color": "#FF3B30",    // Cor do badge
+        "time_ago": "2 min"            // Tempo relativo
       },
       "prediction": {
-        "score": 0.87,        // 0.0 a 1.0 - probabilidade de clique
+        "score": 0.87,
         "canPredict": true
       }
     }
@@ -241,7 +547,7 @@ async function loadMore() {
 
 ### Breaking News (Urgentes)
 
-> Notícias das últimas 2 horas - use para banner/seção especial.
+> Notícias das últimas 2 horas - use para seção especial no topo do feed "Agora".
 
 ```http
 GET /api/feeds/breaking?limit=10
@@ -254,19 +560,187 @@ GET /api/feeds/breaking?limit=10
   "data": [
     {
       "id": 456,
-      "title": "URGENTE: ...",
+      "title": "Congresso aprova reforma tributária",
       "published_at": "2025-12-11T19:30:00Z",
-      "is_breaking": true
+      "is_breaking": true,
+      "display": {
+        "urgency_badge": "URGENTE",
+        "urgency_color": "#FF3B30",
+        "time_ago": "5 min"
+      }
     }
   ],
   "feed_type": "breaking"
 }
 ```
 
-### Feed Genérico (Sem Personalização)
+### Estratégia de Urgência
+
+Em vez de "AO VIVO", usamos badges baseados em **tempo** e **relevância**:
+
+| Badge | Condição | Cor | Quando usar |
+|-------|----------|-----|-------------|
+| `URGENTE` | Notícia < 30 min + categoria importante | `#FF3B30` (vermelho) | Breaking news políticas, econômicas |
+| `AGORA` | Notícia < 2 horas | `#FF9500` (laranja) | Notícias recentes |
+| `NOVO` | Notícia < 6 horas | `#34C759` (verde) | Conteúdo fresco |
+| `💡 Descoberta` | Wildcard/fora do padrão | `#AF52DE` (roxo) | Expandir interesses |
+
+**Lógica de exibição:**
+```typescript
+function getUrgencyBadge(article: Article): Badge | null {
+  const minutesAgo = getMinutesAgo(article.published_at);
+  
+  if (article.is_breaking && minutesAgo < 30) {
+    return { text: 'URGENTE', color: '#FF3B30' };
+  }
+  
+  if (minutesAgo < 120) { // 2 horas
+    return { text: 'AGORA', color: '#FF9500' };
+  }
+  
+  if (minutesAgo < 360) { // 6 horas
+    return { text: 'NOVO', color: '#34C759' };
+  }
+  
+  if (article.is_wildcard) {
+    return { text: '💡 Descoberta', color: '#AF52DE' };
+  }
+  
+  return null;
+}
+```
+
+### Feed Cronológico ("Agora")
+
+> Feed em ordem cronológica, sem personalização. Use como segunda tab.
 
 ```http
+GET /api/feed?limit=50
+```
+
+**Com filtro de categoria:**
+```http
 GET /api/feed?category=politica,economia&limit=50
+```
+
+---
+
+## ⭐ Ações do Card
+
+Cada card de artigo deve ter 3 ações visíveis:
+
+```
+┌────────────────────────────────────────────────┐
+│                                                │
+│  [IMAGEM DO ARTIGO]                            │
+│                                                │
+│  Título da notícia que pode                    │
+│  ocupar até duas linhas...                     │
+│                                                │
+│  G1 • 2 min                                    │
+│                                                │
+│  ⭐        🔖        ↗️                         │
+│  Like    Salvar   Compartilhar                │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### Like (Estrela) ⭐
+
+> Indica interesse forte no artigo. Pesa mais no algoritmo que um clique.
+
+**Adicionar Like:**
+```http
+POST /api/articles/:id/like
+Content-Type: application/json
+
+{
+  "user_id": 1
+}
+```
+
+**Remover Like:**
+```http
+DELETE /api/articles/:id/like?user_id=1
+```
+
+**Resposta:**
+```json
+{
+  "success": true,
+  "liked": true,
+  "article_id": 123
+}
+```
+
+### Bookmark (Salvar) 🔖
+
+> Salva o artigo para ler depois.
+
+**Adicionar Bookmark:**
+```http
+POST /api/bookmark
+Content-Type: application/json
+
+{
+  "id": "news_123",
+  "user_id": 1
+}
+```
+
+**Remover Bookmark:**
+```http
+DELETE /api/bookmark/news_123?user_id=1
+```
+
+**Listar Bookmarks:**
+```http
+GET /api/bookmarks?user_id=1
+```
+
+### Compartilhar ↗️
+
+> O compartilhamento é feito localmente no app usando a URL do artigo.
+
+```typescript
+import { Share } from 'react-native';
+
+async function shareArticle(article: Article) {
+  // Registra interação de compartilhamento
+  trackInteraction(article.id, 'share');
+  
+  // Abre sheet nativo de compartilhamento
+  await Share.share({
+    title: article.title,
+    message: article.title,
+    url: article.url
+  });
+}
+```
+
+### Estados Visuais dos Botões
+
+```typescript
+interface CardActions {
+  isLiked: boolean;      // ⭐ preenchida (amarelo) vs outline (cinza)
+  isBookmarked: boolean; // 🔖 preenchido (azul) vs outline (cinza)
+  // Share não tem estado, sempre outline
+}
+```
+
+**Cores:**
+| Estado | Cor | Hex |
+|--------|-----|-----|
+| Like ativo | Amarelo/Dourado | `#FFD60A` |
+| Bookmark ativo | Azul | `#007AFF` |
+| Inativo | Cinza | `#636366` |
+
+**Animação ao tocar:**
+```
+1. Scale: 1 → 0.8 → 1.2 → 1
+2. Haptic feedback (light)
+3. Cor muda instantaneamente
+4. Duração total: 300ms
 ```
 
 ---
@@ -277,12 +751,15 @@ GET /api/feed?category=politica,economia&limit=50
 
 ### Tipos de Interação
 
-| Tipo | Quando Enviar | Dados |
-|------|---------------|-------|
-| `impression` | Artigo aparece na tela | position |
-| `scroll_stop` | Usuário para no artigo (2+ segundos) | viewport_time, scroll_velocity |
-| `view` | Artigo fica 50%+ visível por 3+ segundos | viewport_time, screen_position |
-| `click` | Usuário clica para ler | duration (tempo de leitura) |
+| Tipo | Quando Enviar | Peso no Algoritmo | Dados |
+|------|---------------|-------------------|-------|
+| `impression` | Artigo aparece na tela | ⭐ | position |
+| `scroll_stop` | Usuário para no artigo (2+ seg) | ⭐⭐ | viewport_time, scroll_velocity |
+| `view` | Artigo 50%+ visível por 3+ seg | ⭐⭐ | viewport_time, screen_position |
+| `click` | Usuário clica para ler | ⭐⭐⭐⭐ | duration (tempo de leitura) |
+| `like` | Usuário dá like (estrela) | ⭐⭐⭐⭐⭐ | - |
+| `share` | Usuário compartilha | ⭐⭐⭐⭐⭐ | - |
+| `bookmark` | Usuário salva | ⭐⭐⭐ | - |
 
 ### Iniciar Sessão
 
@@ -581,52 +1058,6 @@ GET /api/interactions/user/:userId/stats
 
 ---
 
-## 🔖 Bookmarks
-
-### Salvar Bookmark
-
-```http
-POST /api/bookmark
-Content-Type: application/json
-
-{
-  "id": "news_123"
-}
-```
-
-### Remover Bookmark
-
-```http
-DELETE /api/bookmark/news_123
-```
-
-### Listar Bookmarks
-
-```http
-GET /api/bookmarks
-```
-
-**Resposta:**
-```json
-[
-  {
-    "id": "news_123",
-    "source": "news",
-    "type": "article",
-    "title": "Título do Artigo",
-    "summary": "Resumo...",
-    "imageUrl": "https://...",
-    "url": "https://...",
-    "siteName": "G1",
-    "category": { "id": 1, "name": "Política", "slug": "politica" },
-    "publishedAt": "2025-12-11T10:00:00Z",
-    "bookmarkedAt": "2025-12-11T11:00:00Z"
-  }
-]
-```
-
----
-
 ## 🔌 WebSocket (Tempo Real)
 
 ### Conectar
@@ -713,27 +1144,37 @@ ws.send(JSON.stringify({
 
 - [ ] Criar/buscar usuário no primeiro acesso
 - [ ] Salvar `user_id` localmente (AsyncStorage/SecureStore)
-- [ ] Implementar onboarding com seleção de categorias
-- [ ] Usar `/api/feeds/addictive` como feed principal
-- [ ] Implementar scroll infinito com `/api/feeds/addictive/more`
-- [ ] Tracking básico: impressions + clicks
-- [ ] Bookmarks
+- [ ] Implementar onboarding com seleção de categorias (mínimo 3)
+- [ ] Tab "Para Você" com `/api/feeds/addictive`
+- [ ] Tab "Agora" com `/api/feed` (cronológico)
+- [ ] Scroll infinito com `/api/feeds/addictive/more`
+- [ ] Ações do card: ⭐ Like, 🔖 Bookmark, ↗️ Share
+- [ ] Tracking básico: impressions + clicks + likes
 
 ### Engajamento (Alta Prioridade)
 
-- [ ] Implementar sistema de sessões
+- [ ] Implementar sistema de sessões (start/end)
 - [ ] Tracking completo (scroll_stop, view, viewport_time)
-- [ ] Exibir badges de urgência (`display.urgency_badge`)
-- [ ] Seção de Breaking News com `/api/feeds/breaking`
+- [ ] Badges de urgência (URGENTE, AGORA, NOVO, Descoberta)
 - [ ] Pull-to-refresh com animação satisfatória
-- [ ] WebSocket para notícias em tempo real
+- [ ] Haptic feedback nas ações
+- [ ] Estados visuais (lido/não lido, liked, saved)
+
+### Visual & UX
+
+- [ ] Dark mode como padrão
+- [ ] Skeleton loading com shimmer
+- [ ] Animações de entrada dos cards (fade + slide)
+- [ ] Animação de bounce nos botões de ação
+- [ ] Empty states bonitos
+- [ ] Error states com retry
 
 ### Avançado
 
-- [ ] Usar predição de clique para ordenar artigos
-- [ ] Mostrar padrões do usuário (horários preferidos)
+- [ ] WebSocket para notícias em tempo real
 - [ ] Push notifications baseadas em comportamento
-- [ ] A/B testing de layouts
+- [ ] Usar predição de clique para destacar artigos
+- [ ] Tela de perfil com estatísticas
 
 ---
 
@@ -760,6 +1201,7 @@ Verifique se `article_id` está no formato `"news_123"` (com prefixo).
 
 | Versão | Data | Mudanças |
 |--------|------|----------|
+| 3.0.0 | 2025-12-11 | Estrutura do app, design visual, ações do card (like/bookmark/share), badges de urgência |
 | 2.0.0 | 2025-12-11 | Feed viciante, sistema de aprendizado, sessões |
 | 1.0.0 | 2025-12-10 | Versão inicial |
 
